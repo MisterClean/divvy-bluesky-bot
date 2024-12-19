@@ -1,0 +1,7 @@
+requests==2.31.0
+python-dotenv==1.0.0
+atproto==0.0.36
+folium==0.14.0
+selenium==4.11.2
+pandas==2.1.0
+SQLAlchemy==2.0.20

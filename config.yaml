@@ -1,0 +1,13 @@
+# Application settings
+features:
+  bluesky_posting: false  # Toggle Bluesky posting on/off
+
+# API settings
+api:
+  page_size: 1000  # Number of records per page
+  max_retries: 3   # Number of retries on API failure
+
+# Logging settings
+logging:
+  level: INFO
+  format: '%(asctime)s - %(levelname)s - %(message)s'
