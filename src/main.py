@@ -7,6 +7,7 @@ from map_generator import MapGenerator
 from bluesky_poster import BlueskyPoster
 from dotenv import load_dotenv
 import time
+import random
 
 # Create necessary directories
 os.makedirs('logs', exist_ok=True)
@@ -111,18 +112,19 @@ class DivvyBot:
                     # Get full station object from database
                     station = self.db.get_station(station_data['id'])
                     
-                    # Generate map
-                    logger.debug(f"Generating map for station {station.station_name}")
-                    map_path = self.map_gen.generate_station_map(station)
+                    # Generate maps
+                    logger.debug(f"Generating maps for station {station.station_name}")
+                    static_map, interactive_map = self.map_gen.generate_station_map(station)
                     
-                    # Post update
+                    # Post update with static map
                     if result == 'new':
-                        self.poster.post_new_station(station, map_path)
+                        self.poster.post_new_station(station, static_map)
                     elif result == 'electrified':
-                        self.poster.post_electrified_station(station, map_path)
+                        self.poster.post_electrified_station(station, static_map)
                     
-                    # Clean up map file
-                    os.remove(map_path)
+                    # Clean up map files
+                    os.remove(static_map)
+                    os.remove(interactive_map)
                     
             except Exception as e:
                 logger.error(f"Error processing station {station_data.get('station_name', 'unknown')}: {e}")
@@ -156,10 +158,46 @@ class DivvyBot:
                 logger.error(f"Error in main loop: {e}")
                 time.sleep(60)  # Wait a minute before retrying on error
 
+    def test_random_station(self):
+        """
+        Test mode that picks a random station and posts it to Bluesky
+        """
+        logger.info("Running in test mode - posting random station")
+        
+        # Get all stations
+        stations = self.db.get_all_stations()
+        if not stations:
+            logger.error("No stations found in database")
+            return
+            
+        # Pick random station
+        station = random.choice(stations)
+        logger.info(f"Selected random station: {station.station_name}")
+        
+        # Generate maps
+        logger.debug(f"Generating maps for station {station.station_name}")
+        static_map, interactive_map = self.map_gen.generate_station_map(station)
+        
+        # Force test_mode=false to actually post to Bluesky
+        if self._poster is None:
+            self._poster = BlueskyPoster(test_mode=False)
+        self._poster.post_new_station(station, static_map)
+        
+        # Clean up map files
+        os.remove(static_map)
+        os.remove(interactive_map)
+        
+        logger.info("Test post completed")
+
 def main():
     load_dotenv()
     bot = DivvyBot()
-    bot.run()
+    
+    # Check if test mode is enabled
+    if bot.config['features']['test_mode']:
+        bot.test_random_station()
+    else:
+        bot.run()
 
 if __name__ == "__main__":
     main()

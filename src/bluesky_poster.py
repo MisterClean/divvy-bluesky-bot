@@ -2,6 +2,7 @@ from atproto import Client
 import os
 from dotenv import load_dotenv
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +55,10 @@ class BlueskyPoster:
                     upload = self.client.com.atproto.repo.upload_blob(f)
                 
                 # Create the post with the image
-                self.client.com.atproto.repo.create_record(
-                    repo=self.client.me.did,
-                    collection='app.bsky.feed.post',
-                    record={
+                data = {
+                    'repo': self.client.me.did,
+                    'collection': 'app.bsky.feed.post',
+                    'record': {
                         'text': text,
                         'embed': {
                             '$type': 'app.bsky.embed.images',
@@ -66,9 +67,10 @@ class BlueskyPoster:
                                 'image': upload.blob
                             }]
                         },
-                        'createdAt': None  # Will be set by the server
+                        'createdAt': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
                     }
-                )
+                }
+                self.client.com.atproto.repo.create_record(data=data)
                 logger.info(f"Successfully posted to Bluesky: {text[:50]}...")
             
         except Exception as e:
