@@ -54,7 +54,8 @@ class DivvyBot:
         Lazy-load the BlueskyPoster only when needed
         """
         if self._poster is None and not self.is_first_run:
-            self._poster = BlueskyPoster()
+            test_mode = self.config['features'].get('test_mode', False)
+            self._poster = BlueskyPoster(test_mode=test_mode)
         return self._poster
     
     def validate_station_data(self, station_data):

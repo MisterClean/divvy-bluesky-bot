@@ -1,6 +1,7 @@
 # Application settings
 features:
   bluesky_posting: false  # Toggle Bluesky posting on/off
+  test_mode: false       # Preview posts without sending them
 
 # API settings
 api:
