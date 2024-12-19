@@ -9,3 +9,4 @@ shapely==2.0.1
 pandas==2.1.0
 Pillow==10.1.0
 SQLAlchemy==2.0.20
+PyYAML==6.0.1

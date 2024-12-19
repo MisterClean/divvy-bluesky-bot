@@ -3,6 +3,7 @@ import time
 import geopandas as gpd
 import contextily as ctx
 import matplotlib.pyplot as plt
+import matplotlib.transforms as transforms
 from shapely.geometry import Point
 import numpy as np
 import folium
@@ -36,7 +37,9 @@ class MapGenerator:
         station_proj = station_gdf.to_crs(local_crs)
         
         # Generate static map
-        fig, ax = plt.subplots(figsize=(6, 6))
+        fig = plt.figure(figsize=(6, 6))
+        ax = fig.add_subplot(111)
+        ax.set_aspect('equal')
         
         # Convert to Web Mercator for static map
         station_gdf_web_merc = station_gdf.to_crs(epsg=3857)
@@ -61,6 +64,7 @@ class MapGenerator:
             source=ctx.providers.CartoDB.Positron,
             alpha=0.9  # Slightly less fade for clarity
         )
+        
         
         # Plot station with a simple circle marker
         station_color = '#E53935' if station.is_electric else '#1E88E5'  # Material Design colors

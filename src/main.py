@@ -98,36 +98,57 @@ class DivvyBot:
         self.new_stations = 0
         self.electrified_stations = 0
         
+        # Collect new stations first
+        new_station_ids = []
+        
         for station_data in stations:
             try:
                 # Add or update station in database
                 result = self.db.add_or_update_station(station_data)
                 
+                # Track changes but don't post during first run
                 if result == 'new':
                     self.new_stations += 1
+                    if not self.is_first_run:
+                        new_station_ids.append(station_data['id'])
                 elif result == 'electrified':
                     self.electrified_stations += 1
-                
-                if result and not self.is_first_run and self.config['features']['bluesky_posting']:
-                    # Get full station object from database
-                    station = self.db.get_station(station_data['id'])
-                    
-                    # Generate maps
-                    logger.debug(f"Generating maps for station {station.station_name}")
-                    static_map, interactive_map = self.map_gen.generate_station_map(station)
-                    
-                    # Post update with static map
-                    if result == 'new':
-                        self.poster.post_new_station(station, static_map)
-                    elif result == 'electrified':
+                    # Always post electrified stations since this can only happen to existing stations
+                    if self.config['features']['bluesky_posting']:
+                        station = self.db.get_station(station_data['id'])
+                        static_map, interactive_map = self.map_gen.generate_station_map(station)
                         self.poster.post_electrified_station(station, static_map)
-                    
-                    # Clean up map files
-                    os.remove(static_map)
-                    os.remove(interactive_map)
+                        os.remove(static_map)
+                        os.remove(interactive_map)
                     
             except Exception as e:
                 logger.error(f"Error processing station {station_data.get('station_name', 'unknown')}: {e}")
+        
+        # Post about new stations
+        if new_station_ids and not self.is_first_run and self.config['features']['bluesky_posting']:
+            # Get post limit from config (0 means no limit)
+            post_limit = self.config['features'].get('limit_new_station_posts', 10)
+            
+            # Apply limit if configured
+            if post_limit > 0:
+                stations_to_post = new_station_ids[:post_limit]
+                skipped_count = len(new_station_ids) - len(stations_to_post)
+            else:
+                stations_to_post = new_station_ids
+                skipped_count = 0
+            
+            for station_id in stations_to_post:
+                try:
+                    station = self.db.get_station(station_id)
+                    static_map, interactive_map = self.map_gen.generate_station_map(station)
+                    self.poster.post_new_station(station, static_map)
+                    os.remove(static_map)
+                    os.remove(interactive_map)
+                except Exception as e:
+                    logger.error(f"Error posting new station {station_id}: {e}")
+            
+            if skipped_count > 0:
+                logger.warning(f"Skipped posting about {skipped_count} new stations due to {post_limit} station limit")
         
         # Log summary
         if self.is_first_run:
@@ -135,7 +156,12 @@ class DivvyBot:
         else:
             changes = []
             if self.new_stations > 0:
-                changes.append(f"{self.new_stations} new")
+                post_limit = self.config['features'].get('limit_new_station_posts', 10)
+                if post_limit > 0:
+                    posted = min(self.new_stations, post_limit)
+                    changes.append(f"{self.new_stations} new (posted {posted})")
+                else:
+                    changes.append(f"{self.new_stations} new (posted all)")
             if self.electrified_stations > 0:
                 changes.append(f"{self.electrified_stations} electrified")
             if changes:
@@ -143,20 +169,54 @@ class DivvyBot:
             else:
                 logger.info("No changes detected")
     
+    def post_forced_station(self, station_id):
+        """
+        Post a specific station to Bluesky
+        """
+        try:
+            station = self.db.get_station(station_id)
+            if not station:
+                logger.error(f"Forced station ID {station_id} not found in database")
+                return
+                
+            logger.info(f"Posting forced station: {station.station_name}")
+            static_map, interactive_map = self.map_gen.generate_station_map(station)
+            
+            # Force test_mode=false to actually post to Bluesky
+            if self._poster is None:
+                self._poster = BlueskyPoster(test_mode=False)
+            self._poster.post_new_station(station, static_map)
+            
+            # Clean up map files
+            os.remove(static_map)
+            os.remove(interactive_map)
+            
+            logger.info("Forced station post completed")
+        except Exception as e:
+            logger.error(f"Error posting forced station: {e}")
+            raise
+
     def run(self):
         """
-        Main bot loop
+        Single run of the bot for cron job execution
         """
         logger.info("Starting Divvy Station Bot")
         
-        while True:
-            try:
+        try:
+            # Check if we should force a specific station
+            force_station_id = self.config['features'].get('force_station_id')
+            if force_station_id:
+                self.post_forced_station(force_station_id)
+            else:
                 self.process_stations()
-                # Wait 15 minutes before checking again
-                time.sleep(900)
-            except Exception as e:
-                logger.error(f"Error in main loop: {e}")
-                time.sleep(60)  # Wait a minute before retrying on error
+            logger.info("Completed processing stations")
+        except Exception as e:
+            logger.error(f"Error during station processing: {e}")
+            raise  # Re-raise to ensure non-zero exit code
+        finally:
+            # Cleanup
+            if self.db:
+                self.db.close()
 
     def test_random_station(self):
         """
@@ -164,30 +224,38 @@ class DivvyBot:
         """
         logger.info("Running in test mode - posting random station")
         
-        # Get all stations
-        stations = self.db.get_all_stations()
-        if not stations:
-            logger.error("No stations found in database")
-            return
+        try:
+            # Get all stations
+            stations = self.db.get_all_stations()
+            if not stations:
+                logger.error("No stations found in database")
+                return
+                
+            # Pick random station
+            station = random.choice(stations)
+            logger.info(f"Selected random station: {station.station_name}")
             
-        # Pick random station
-        station = random.choice(stations)
-        logger.info(f"Selected random station: {station.station_name}")
-        
-        # Generate maps
-        logger.debug(f"Generating maps for station {station.station_name}")
-        static_map, interactive_map = self.map_gen.generate_station_map(station)
-        
-        # Force test_mode=false to actually post to Bluesky
-        if self._poster is None:
-            self._poster = BlueskyPoster(test_mode=False)
-        self._poster.post_new_station(station, static_map)
-        
-        # Clean up map files
-        os.remove(static_map)
-        os.remove(interactive_map)
-        
-        logger.info("Test post completed")
+            # Generate maps
+            logger.debug(f"Generating maps for station {station.station_name}")
+            static_map, interactive_map = self.map_gen.generate_station_map(station)
+            
+            # Force test_mode=false to actually post to Bluesky
+            if self._poster is None:
+                self._poster = BlueskyPoster(test_mode=False)
+            self._poster.post_new_station(station, static_map)
+            
+            # Clean up map files
+            os.remove(static_map)
+            os.remove(interactive_map)
+            
+            logger.info("Test post completed")
+        except Exception as e:
+            logger.error(f"Error in test mode: {e}")
+            raise
+        finally:
+            # Cleanup
+            if self.db:
+                self.db.close()
 
 def main():
     load_dotenv()

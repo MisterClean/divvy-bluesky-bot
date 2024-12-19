@@ -35,7 +35,7 @@ class DivvyAPI:
                         "$offset": offset,
                         "$limit": self.page_size
                     },
-                    timeout=30
+                    timeout=self.config['api']['timeouts']['soda']
                 )
                 response.raise_for_status()
                 
