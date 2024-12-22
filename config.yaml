@@ -4,7 +4,7 @@ features:
   test_mode: false      # Preview posts without sending them
   limit_new_station_posts: 10  # Max number of new station posts per run (0 for unlimited)
   streetview_images: true  # Include Google Streetview images in new station posts
-  # force_station_id: null  # Uncomment and set ID to force post a specific station
+  force_station_id: "a3b148bf-a135-11e9-9cda-0a87ae2ba916"  # Force post Laramie Ave & Madison St station
 
 # API settings
 api:
