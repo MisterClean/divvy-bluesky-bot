@@ -175,10 +175,10 @@ export class ProtomapsRenderer implements StationMapRenderer {
                 type: "circle",
                 source: "station",
                 paint: {
-                  "circle-radius": 22,
-                  "circle-color": station.isElectric ? "#fb7185" : "#51c2f0",
-                  "circle-stroke-color": "#ffffff",
-                  "circle-stroke-width": 7,
+                  "circle-radius": 39,
+                  "circle-color": "#ffffff",
+                  "circle-stroke-color": "#071d3a",
+                  "circle-stroke-width": 4,
                 },
               });
             });
@@ -271,16 +271,16 @@ function mapDocument(logoDataUrl: string, fontDataUrl: string): string {
         font-family: "Big Shoulders Text", "Arial Narrow", sans-serif;
       }
       #map {
-        filter: grayscale(1) sepia(0.25) hue-rotate(164deg) saturate(2.4) contrast(1.08) brightness(0.75);
+        filter: saturate(0.96) contrast(1.04) brightness(0.98);
       }
       .map-vignette {
         position: absolute;
         z-index: 3;
         inset: 0;
         background:
-          linear-gradient(90deg, rgba(5, 26, 55, 0.36), rgba(5, 26, 55, 0.08) 60%, rgba(5, 26, 55, 0.42)),
-          linear-gradient(180deg, rgba(5, 26, 55, 0.28) 0%, transparent 32%),
-          linear-gradient(180deg, transparent 40%, rgba(5, 26, 55, 0.2) 56%, rgba(5, 26, 55, 0.92) 75%, #051a37 88%);
+          linear-gradient(90deg, rgba(5, 26, 55, 0.12), transparent 62%, rgba(5, 26, 55, 0.14)),
+          linear-gradient(180deg, rgba(5, 26, 55, 0.08) 0%, transparent 45%),
+          linear-gradient(180deg, transparent 46%, rgba(5, 26, 55, 0.08) 59%, rgba(5, 26, 55, 0.8) 77%, #051a37 91%);
         pointer-events: none;
       }
       .civic-stripes {
@@ -301,9 +301,9 @@ function mapDocument(logoDataUrl: string, fontDataUrl: string): string {
         display: flex;
         gap: 14px;
         color: #e4002b;
-        font-family: Arial, sans-serif;
-        font-size: 36px;
-        line-height: 1;
+      }
+      .civic-stars span {
+        font: 400 39px/1 Arial, "Noto Sans Symbols 2", sans-serif;
       }
       .focus-ring {
         position: absolute;
@@ -315,6 +315,19 @@ function mapDocument(logoDataUrl: string, fontDataUrl: string): string {
         border: 4px solid rgba(255, 255, 255, 0.92);
         border-radius: 2px;
         box-shadow: 14px 14px 0 rgba(228, 0, 43, 0.88);
+        transform: translate(-50%, -50%);
+      }
+      .station-star {
+        position: absolute;
+        z-index: 5;
+        top: 49%;
+        left: 50%;
+        width: 73px;
+        height: 73px;
+        color: #e4002b;
+        filter: drop-shadow(0 2px 3px rgba(7, 29, 58, 0.34));
+        font: 400 89px/0.82 Arial, "Noto Sans Symbols 2", sans-serif;
+        text-align: center;
         transform: translate(-50%, -50%);
       }
       .focus-ring::before,
@@ -444,8 +457,11 @@ function mapDocument(logoDataUrl: string, fontDataUrl: string): string {
   <body>
     <div id="map"></div>
     <div class="map-vignette"></div>
-    <div class="civic-stars" aria-hidden="true"><span>✶</span><span>✶</span><span>✶</span><span>✶</span></div>
+    <div class="civic-stars" aria-hidden="true">
+      <span>✶</span><span>✶</span><span>✶</span><span>✶</span>
+    </div>
     <div class="focus-ring" aria-hidden="true"></div>
+    <div class="station-star" aria-hidden="true">✶</div>
     <div class="brand" aria-label="Divvy">
       <img src="${logoDataUrl}" alt="Divvy">
     </div>
@@ -455,7 +471,7 @@ function mapDocument(logoDataUrl: string, fontDataUrl: string): string {
       <h1 data-title></h1>
       <div class="details-row">
         <div class="details" data-docks></div>
-        <div class="details electric" data-electric>⚡️ Electrified Station</div>
+        <div class="details electric" data-electric>⚡️ Electrified</div>
       </div>
     </section>
     <div class="civic-stripes" aria-hidden="true"></div>
