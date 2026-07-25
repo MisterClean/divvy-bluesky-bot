@@ -24,7 +24,7 @@ const environmentSchema = z
     PROTOMAPS_STYLE_URL: z.url().optional(),
     MAP_WIDTH: z.coerce.number().int().min(600).max(2400).default(1080),
     MAP_HEIGHT: z.coerce.number().int().min(600).max(2400).default(1350),
-    MAP_ZOOM: z.coerce.number().min(12).max(19).default(16),
+    MAP_ZOOM: z.coerce.number().min(12).max(19).default(17),
     STREETVIEW_ENABLED: booleanFromEnv.default(false),
     GOOGLE_MAPS_API_KEY: z.string().min(1).optional(),
     STREETVIEW_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),

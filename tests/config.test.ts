@@ -6,6 +6,7 @@ describe("loadConfig", () => {
     const config = loadConfig({ NODE_ENV: "test" });
     expect(config.publishEnabled).toBe(false);
     expect(config.protomapsStyleUrl).toBeUndefined();
+    expect(config.mapZoom).toBe(17);
   });
 
   it("builds the same hosted Protomaps style URL pattern as the website", () => {
