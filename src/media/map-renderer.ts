@@ -85,18 +85,19 @@ export class ProtomapsRenderer implements StationMapRenderer {
           };
           const title = document.querySelector<HTMLElement>("[data-title]");
           const details =
-            document.querySelector<HTMLElement>("[data-details]");
+            document.querySelector<HTMLElement>("[data-docks]");
+          const electricDetails =
+            document.querySelector<HTMLElement>("[data-electric]");
           const eyebrowElement =
             document.querySelector<HTMLElement>("[data-eyebrow]");
-          if (!title || !details || !eyebrowElement) {
+          if (!title || !details || !electricDetails || !eyebrowElement) {
             throw new Error("Map card elements are missing");
           }
 
           eyebrowElement.textContent = eyebrow;
           title.textContent = station.stationName.replace(/\*$/, "");
-          details.textContent = `${station.totalDocks} docks${
-            station.isElectric ? " · Charging station" : ""
-          }`;
+          details.textContent = `${station.totalDocks} docks`;
+          electricDetails.hidden = !station.isElectric;
           const stationNameLength = title.textContent.length;
           if (stationNameLength > 34) {
             title.classList.add("very-long");
@@ -277,40 +278,36 @@ function mapDocument(logoDataUrl: string): string {
         width: 100%;
         height: auto;
       }
-      .announcement-label {
+      .station-card {
         position: absolute;
         z-index: 5;
-        top: 38px;
-        right: 38px;
-        display: flex;
+        right: 44px;
+        bottom: 58px;
+        left: 44px;
+      }
+      .announcement-label {
+        position: relative;
+        display: inline-flex;
         align-items: center;
-        min-height: 92px;
-        margin: 0;
-        padding: 18px 26px 18px 31px;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: 18px;
-        background: rgba(2, 6, 23, 0.9);
-        box-shadow: 0 14px 32px rgba(2, 6, 23, 0.28);
-        font-size: 25px;
+        min-height: 42px;
+        margin: 0 0 16px;
+        padding-left: 20px;
+        color: #ffffff;
+        font-size: 24px;
         font-weight: 900;
-        letter-spacing: 0.055em;
+        letter-spacing: 0.085em;
+        line-height: 1;
+        text-shadow: 0 3px 16px rgba(2, 6, 23, 0.72);
         text-transform: uppercase;
       }
       .announcement-label::before {
         position: absolute;
         left: 0;
         width: 8px;
-        height: 46px;
+        height: 38px;
         border-radius: 0 8px 8px 0;
         background: #51c2f0;
         content: "";
-      }
-      .station-card {
-        position: absolute;
-        z-index: 5;
-        right: 44px;
-        bottom: 42px;
-        left: 44px;
       }
       h1 {
         margin: 0;
@@ -329,11 +326,16 @@ function mapDocument(logoDataUrl: string): string {
       h1.very-long {
         font-size: 60px;
       }
+      .details-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 24px;
+      }
       .details {
         display: inline-flex;
         align-items: center;
         min-height: 52px;
-        margin-top: 24px;
         padding: 10px 18px;
         border-radius: 10px;
         background: #51c2f0;
@@ -343,17 +345,22 @@ function mapDocument(logoDataUrl: string): string {
         letter-spacing: 0.025em;
         text-transform: uppercase;
       }
+      .details.electric {
+        background: #facc15;
+      }
+      .details[hidden] {
+        display: none;
+      }
       .attribution {
         position: absolute;
         z-index: 5;
-        top: 144px;
-        right: 38px;
-        padding: 6px 9px;
-        border-radius: 7px;
-        background: rgba(2, 6, 23, 0.66);
-        color: rgba(255, 255, 255, 0.88);
-        font-size: 13px;
+        right: 18px;
+        bottom: 14px;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 12px;
         font-weight: 600;
+        line-height: 1;
+        text-shadow: 0 1px 5px rgba(2, 6, 23, 0.9);
       }
     </style>
   </head>
@@ -363,10 +370,13 @@ function mapDocument(logoDataUrl: string): string {
     <div class="brand" aria-label="Divvy">
       <img src="${logoDataUrl}" alt="Divvy">
     </div>
-    <p class="announcement-label" data-eyebrow></p>
     <section class="station-card" aria-label="Divvy station details">
+      <p class="announcement-label" data-eyebrow></p>
       <h1 data-title></h1>
-      <div class="details" data-details></div>
+      <div class="details-row">
+        <div class="details" data-docks></div>
+        <div class="details electric" data-electric>⚡️ Electrified Station</div>
+      </div>
     </section>
     <div class="attribution">© Protomaps · © OpenStreetMap contributors</div>
   </body>
