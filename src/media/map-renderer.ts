@@ -110,7 +110,7 @@ export class ProtomapsRenderer implements StationMapRenderer {
 
           eyebrowElement.textContent = eyebrow;
           const isElectrified = eyebrow.toLowerCase().includes("electrified");
-          statusElement.textContent = isElectrified ? "CHARGED" : "NEW";
+          statusElement.textContent = isElectrified ? "CHARGED" : "OPEN";
           statusElement.classList.toggle("long", isElectrified);
           title.textContent = station.stationName.replace(/\*$/, "");
           details.textContent = `${station.totalDocks} docks`;
@@ -266,34 +266,74 @@ function mapDocument(logoDataUrl: string, fontDataUrl: string): string {
       html, body, #map { height: 100%; width: 100%; margin: 0; }
       body {
         overflow: hidden;
-        background: #020306;
+        background: #071d3a;
         color: #ffffff;
         font-family: "Big Shoulders Text", "Arial Narrow", sans-serif;
       }
       #map {
-        filter: saturate(0.58) contrast(1.35) brightness(0.58);
+        filter: grayscale(1) sepia(0.25) hue-rotate(164deg) saturate(2.4) contrast(1.08) brightness(0.75);
       }
       .map-vignette {
         position: absolute;
         z-index: 3;
         inset: 0;
         background:
-          radial-gradient(circle at 50% 48%, transparent 0 9%, rgba(2, 3, 6, 0.1) 28%, rgba(2, 3, 6, 0.46) 72%),
-          linear-gradient(180deg, rgba(2, 3, 6, 0.46) 0%, transparent 25%),
-          linear-gradient(180deg, transparent 31%, rgba(2, 3, 6, 0.18) 48%, rgba(2, 3, 6, 0.94) 69%, #020306 84%);
+          linear-gradient(90deg, rgba(5, 26, 55, 0.36), rgba(5, 26, 55, 0.08) 60%, rgba(5, 26, 55, 0.42)),
+          linear-gradient(180deg, rgba(5, 26, 55, 0.28) 0%, transparent 32%),
+          linear-gradient(180deg, transparent 40%, rgba(5, 26, 55, 0.2) 56%, rgba(5, 26, 55, 0.92) 75%, #051a37 88%);
         pointer-events: none;
+      }
+      .civic-stripes {
+        position: absolute;
+        z-index: 4;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        height: 18px;
+        border-top: 6px solid #51c2f0;
+        background: #e4002b;
+      }
+      .civic-stars {
+        position: absolute;
+        z-index: 5;
+        top: 48px;
+        right: 48px;
+        display: flex;
+        gap: 14px;
+        color: #e4002b;
+        font-family: Arial, sans-serif;
+        font-size: 36px;
+        line-height: 1;
       }
       .focus-ring {
         position: absolute;
         z-index: 4;
-        top: 50%;
+        top: 49%;
         left: 50%;
-        width: 118px;
-        height: 118px;
-        border: 2px solid rgba(81, 194, 240, 0.8);
-        border-radius: 50%;
-        box-shadow: 0 0 0 16px rgba(81, 194, 240, 0.12), 0 0 58px rgba(81, 194, 240, 0.34);
+        width: 132px;
+        height: 132px;
+        border: 4px solid rgba(255, 255, 255, 0.92);
+        border-radius: 2px;
+        box-shadow: 14px 14px 0 rgba(228, 0, 43, 0.88);
         transform: translate(-50%, -50%);
+      }
+      .focus-ring::before,
+      .focus-ring::after {
+        position: absolute;
+        background: #51c2f0;
+        content: "";
+      }
+      .focus-ring::before {
+        top: 50%;
+        right: -34px;
+        left: -34px;
+        height: 2px;
+      }
+      .focus-ring::after {
+        top: -34px;
+        bottom: -34px;
+        left: 50%;
+        width: 2px;
       }
       .brand {
         position: absolute;
@@ -311,76 +351,81 @@ function mapDocument(logoDataUrl: string, fontDataUrl: string): string {
       .station-card {
         position: absolute;
         z-index: 5;
-        right: 42px;
-        bottom: 42px;
-        left: 42px;
-        text-align: center;
+        right: 48px;
+        bottom: 55px;
+        left: 48px;
+        text-align: left;
       }
       .announcement-label {
-        display: inline-flex;
-        align-items: center;
-        min-height: 44px;
-        margin: 0 0 2px;
-        padding: 5px 17px 3px;
-        border: 1px solid rgba(81, 194, 240, 0.74);
-        border-radius: 999px;
+        margin: 0 0 12px;
         color: #51c2f0;
-        font-size: 27px;
-        font-weight: 800;
-        letter-spacing: 0.13em;
+        font-size: 34px;
+        font-weight: 900;
+        letter-spacing: 0.17em;
         line-height: 1;
         text-transform: uppercase;
       }
+      .announcement-label::before {
+        display: inline-block;
+        width: 52px;
+        height: 9px;
+        margin: 0 15px 4px 0;
+        background: #e4002b;
+        content: "";
+      }
       .status {
-        margin: -9px 0 8px;
+        margin: -18px 0 -4px;
         color: #ffffff;
-        font-size: 300px;
+        font-size: 270px;
         font-weight: 900;
-        letter-spacing: -0.055em;
-        line-height: 0.84;
+        letter-spacing: -0.045em;
+        line-height: 0.88;
+        text-shadow: 10px 10px 0 rgba(7, 29, 58, 0.36);
         text-transform: uppercase;
       }
       .status.long {
-        font-size: 214px;
+        font-size: 205px;
         letter-spacing: -0.04em;
       }
       h1 {
         margin: 0;
         color: #ffffff;
-        font-size: 73px;
+        font-size: 78px;
         font-weight: 800;
-        line-height: 0.92;
-        letter-spacing: -0.025em;
+        line-height: 0.9;
+        letter-spacing: -0.02em;
         text-transform: uppercase;
       }
       h1.long {
-        font-size: 61px;
+        font-size: 64px;
       }
       h1.very-long {
-        font-size: 50px;
+        font-size: 52px;
       }
       .details-row {
         display: flex;
-        justify-content: center;
-        gap: 28px;
-        margin-top: 17px;
+        gap: 12px;
+        margin-top: 22px;
       }
       .details {
         display: inline-flex;
         align-items: center;
-        color: #d9dde4;
-        font-size: 29px;
-        font-weight: 700;
-        letter-spacing: 0.09em;
+        min-height: 49px;
+        padding: 5px 17px 3px;
+        border: 2px solid rgba(255, 255, 255, 0.72);
+        color: #ffffff;
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
       }
       .details + .details::before {
-        margin-right: 28px;
-        color: #51c2f0;
-        content: "•";
+        display: none;
       }
       .details.electric {
-        color: #d9dde4;
+        border-color: #e4002b;
+        background: #e4002b;
+        color: #ffffff;
       }
       .details[hidden] {
         display: none;
@@ -389,8 +434,8 @@ function mapDocument(logoDataUrl: string, fontDataUrl: string): string {
         position: absolute;
         z-index: 5;
         right: 18px;
-        bottom: 12px;
-        color: rgba(255, 255, 255, 0.42);
+        bottom: 28px;
+        color: rgba(255, 255, 255, 0.58);
         font: 500 11px/1 Roboto, Arial, sans-serif;
         line-height: 1;
       }
@@ -399,6 +444,7 @@ function mapDocument(logoDataUrl: string, fontDataUrl: string): string {
   <body>
     <div id="map"></div>
     <div class="map-vignette"></div>
+    <div class="civic-stars" aria-hidden="true"><span>✶</span><span>✶</span><span>✶</span><span>✶</span></div>
     <div class="focus-ring" aria-hidden="true"></div>
     <div class="brand" aria-label="Divvy">
       <img src="${logoDataUrl}" alt="Divvy">
@@ -412,6 +458,7 @@ function mapDocument(logoDataUrl: string, fontDataUrl: string): string {
         <div class="details electric" data-electric>⚡️ Electrified Station</div>
       </div>
     </section>
+    <div class="civic-stripes" aria-hidden="true"></div>
     <div class="attribution">© Protomaps · © OpenStreetMap contributors</div>
   </body>
 </html>`;
