@@ -18,10 +18,10 @@
     "@atproto/api": "^0.20.34",
     "@atproto/common-web": "^0.5.6",
     "@atproto/lexicon": "^0.7.7",
+    "agent-browser": "0.33.0",
     "better-sqlite3": "^12.0.0",
     "dotenv": "^17.0.0",
     "maplibre-gl": "^5.0.0",
-    "playwright": "^1.50.0",
     "sharp": "^0.35.3",
     "zod": "^4.0.0"
   },

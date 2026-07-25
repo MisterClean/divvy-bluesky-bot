@@ -1,8 +1,8 @@
 [Unit]
-Description=Run the Divvy Station Bluesky Bot daily
+Description=Run the Divvy Station Bluesky Bot every six hours
 
 [Timer]
-OnCalendar=*-*-* 12:00:00 UTC
+OnCalendar=*-*-* 00,06,12,18:00:00 UTC
 Persistent=true
 Unit=divvy-bot.service
 

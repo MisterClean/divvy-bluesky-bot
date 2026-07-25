@@ -1,8 +1,10 @@
+import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
+import os from "node:os";
 import { resolve } from "node:path";
-import type { Browser } from "playwright";
-import { chromium } from "playwright";
+import { pathToFileURL } from "node:url";
 import sharp from "sharp";
 import type { AppConfig } from "../config.js";
 import type {
@@ -14,6 +16,11 @@ import { assertImageSize, MAX_IMAGE_BYTES, type PostImage } from "./image.js";
 const require = createRequire(import.meta.url);
 const mapLibreScriptPath = require.resolve("maplibre-gl/dist/maplibre-gl.js");
 const mapLibreStylePath = require.resolve("maplibre-gl/dist/maplibre-gl.css");
+const mapLibreScript = readFileSync(mapLibreScriptPath, "utf8").replaceAll(
+  "</script",
+  "<\\/script",
+);
+const mapLibreStyle = readFileSync(mapLibreStylePath, "utf8");
 const divvyLogoDataUrl = `data:image/svg+xml;base64,${readFileSync(
   resolve(process.cwd(), "assets/divvy-logo.svg"),
 ).toString("base64")}`;
@@ -33,13 +40,33 @@ export interface MapRendererOptions {
   styleUrl: string;
   width: number;
   height: number;
+  pixelRatio: number;
   zoom: number;
+  nightlineZoom: number;
+  agentBrowserBinary?: string;
+  browserExecutablePath?: string;
+}
+
+export interface AgentBrowserCommandRunner {
+  run(arguments_: string[]): Promise<string>;
 }
 
 export class ProtomapsRenderer implements StationMapRenderer {
-  private browser: Browser | undefined;
+  private readonly sessionName = `divvy-${randomUUID()}`;
+  private readonly commandRunner: AgentBrowserCommandRunner;
+  private browserStarted = false;
 
-  constructor(private readonly options: MapRendererOptions) {}
+  constructor(
+    private readonly options: MapRendererOptions,
+    commandRunner?: AgentBrowserCommandRunner,
+  ) {
+    this.commandRunner =
+      commandRunner ??
+      new ProcessAgentBrowserCommandRunner(
+        options.agentBrowserBinary ??
+          resolve(process.cwd(), "node_modules/.bin/agent-browser"),
+      );
+  }
 
   static fromConfig(config: AppConfig): ProtomapsRenderer {
     if (!config.protomapsStyleUrl) {
@@ -52,7 +79,12 @@ export class ProtomapsRenderer implements StationMapRenderer {
       styleUrl: config.protomapsStyleUrl,
       width: config.mapWidth,
       height: config.mapHeight,
+      pixelRatio: config.mapPixelRatio,
       zoom: config.mapZoom,
+      nightlineZoom: config.mapNightlineZoom,
+      ...(config.agentBrowserExecutablePath
+        ? { browserExecutablePath: config.agentBrowserExecutablePath }
+        : {}),
     });
   }
 
@@ -64,168 +96,206 @@ export class ProtomapsRenderer implements StationMapRenderer {
     } = { eyebrow: "New Divvy Station" },
   ): Promise<PostImage> {
     const announcementStyle = renderOptions.style ?? "civic";
-    const browser = await this.getBrowser();
-    const page = await browser.newPage({
-      viewport: {
-        width: this.options.width,
-        height: this.options.height,
-      },
-      deviceScaleFactor: 1,
-    });
+    const temporaryDirectory = await fs.mkdtemp(
+      resolve(os.tmpdir(), "divvy-render-"),
+    );
+    const htmlPath = resolve(temporaryDirectory, "card.html");
+    const screenshotPath = resolve(temporaryDirectory, "card.png");
 
     try {
-      await page.setContent(
-        mapDocument(
+      await this.ensureBrowser();
+      await fs.writeFile(
+        htmlPath,
+        completeMapDocument(
           divvyLogoDataUrl,
           municipalFontDataUrl,
           announcementStyle,
+          {
+            station,
+            styleUrl: this.options.styleUrl,
+            zoom:
+              announcementStyle === "nightline"
+                ? this.options.nightlineZoom
+                : this.options.zoom,
+            eyebrow: renderOptions.eyebrow,
+            announcementStyle,
+          },
         ),
-        {
-          waitUntil: "domcontentloaded",
-        },
+        { mode: 0o600 },
       );
-      await page.addStyleTag({ path: mapLibreStylePath });
-      await page.addScriptTag({ path: mapLibreScriptPath });
-      await page.evaluate(
-        async ({
-          station,
-          styleUrl,
-          zoom,
-          eyebrow,
-          announcementStyle,
-        }) => {
-          const globalWindow = window as typeof window & {
-            maplibregl: {
-              Map: new (options: Record<string, unknown>) => {
-                on: (
-                  event: string,
-                  listener: (event?: { error?: Error }) => void,
-                ) => void;
-                addSource: (id: string, source: unknown) => void;
-                addLayer: (layer: unknown) => void;
-              };
-            };
-          };
-          const title = document.querySelector<HTMLElement>("[data-title]");
-          const details =
-            document.querySelector<HTMLElement>("[data-docks]");
-          const electricDetails =
-            document.querySelector<HTMLElement>("[data-electric]");
-          const eyebrowElement =
-            document.querySelector<HTMLElement>("[data-eyebrow]");
-          const statusElement =
-            document.querySelector<HTMLElement>("[data-status]");
-          if (
-            !title ||
-            !details ||
-            !electricDetails ||
-            !eyebrowElement ||
-            !statusElement
-          ) {
-            throw new Error("Map card elements are missing");
-          }
-
-          eyebrowElement.textContent = eyebrow;
-          const isElectrified = eyebrow.toLowerCase().includes("electrified");
-          statusElement.textContent = isElectrified
-            ? "CHARGED"
-            : announcementStyle === "nightline"
-              ? "DEPLOYED"
-              : "OPEN";
-          statusElement.classList.toggle(
-            "long",
-            statusElement.textContent.length > 7,
-          );
-          title.textContent = station.stationName.replace(/\*$/, "");
-          details.textContent = `${station.totalDocks} docks`;
-          electricDetails.hidden = !station.isElectric;
-          const stationNameLength = title.textContent.length;
-          if (stationNameLength > 34) {
-            title.classList.add("very-long");
-          } else if (stationNameLength > 24) {
-            title.classList.add("long");
-          }
-
-          await new Promise<void>((resolve, reject) => {
-            const map = new globalWindow.maplibregl.Map({
-              container: "map",
-              style: styleUrl,
-              center: [station.longitude, station.latitude],
-              zoom,
-              attributionControl: false,
-              interactive: false,
-              fadeDuration: 0,
-              preserveDrawingBuffer: true,
-            });
-            let loaded = false;
-
-            const timeout = window.setTimeout(() => {
-              reject(new Error("Timed out waiting for Protomaps to render"));
-            }, 30_000);
-
-            map.on("error", (event) => {
-              if (event?.error) {
-                window.clearTimeout(timeout);
-                reject(event.error);
-              }
-            });
-
-            map.on("load", () => {
-              loaded = true;
-            });
-
-            map.on("idle", () => {
-              if (!loaded) {
-                return;
-              }
-              window.clearTimeout(timeout);
-              resolve();
-            });
-          });
-          await document.fonts.ready;
-        },
-        {
-          station,
-          styleUrl: this.options.styleUrl,
-          zoom: this.options.zoom,
-          eyebrow: renderOptions.eyebrow,
-          announcementStyle,
-        },
+      await this.run(["open", pathToFileURL(htmlPath).href]);
+      await this.run([
+        "wait",
+        "--fn",
+        "window.__DIVVY_RENDER_STATE?.status === 'done' || window.__DIVVY_RENDER_STATE?.status === 'error'",
+      ]);
+      const state = parseRenderState(
+        await this.run([
+          "--json",
+          "eval",
+          "window.__DIVVY_RENDER_STATE",
+        ]),
       );
-
-      const png = await page.screenshot({
-        type: "png",
-        animations: "disabled",
-      });
+      if (state.status !== "done") {
+        throw new Error(state.error ?? "Map rendering failed");
+      }
+      await this.run(["--json", "screenshot", screenshotPath]);
+      const png = await fs.readFile(screenshotPath);
       const bytes = await compressMap(png);
       const image: PostImage = {
         bytes,
         mimeType: "image/jpeg",
         alt: `Map centered on ${station.stationName.replace(/\*$/, "")}, a Divvy station at ${station.latitude.toFixed(5)}, ${station.longitude.toFixed(5)}, showing nearby streets.`,
-        width: this.options.width,
-        height: this.options.height,
+        width: Math.round(this.options.width * this.options.pixelRatio),
+        height: Math.round(this.options.height * this.options.pixelRatio),
       };
       assertImageSize(image);
       return image;
+    } catch (error) {
+      await this.close().catch(() => undefined);
+      throw new Error(redactBrowserSecrets(errorMessage(error)));
     } finally {
-      await page.close();
+      await fs.rm(temporaryDirectory, { recursive: true, force: true });
     }
   }
 
   async close(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = undefined;
+    if (!this.browserStarted) {
+      return;
+    }
+    try {
+      await this.run(["close"]);
+    } finally {
+      this.browserStarted = false;
     }
   }
 
-  private async getBrowser(): Promise<Browser> {
-    this.browser ??= await chromium.launch({
-      headless: true,
-      args: ["--disable-dev-shm-usage"],
-    });
-    return this.browser;
+  private async ensureBrowser(): Promise<void> {
+    if (this.browserStarted) {
+      return;
+    }
+
+    this.browserStarted = true;
+    try {
+      await this.run([
+        "--allow-file-access",
+        "--args",
+        [
+          "--disable-dev-shm-usage",
+          "--enable-unsafe-swiftshader",
+          "--no-sandbox",
+          "--use-angle=swiftshader-webgl",
+          "--use-gl=angle",
+        ].join(","),
+        ...(this.options.browserExecutablePath
+          ? ["--executable-path", this.options.browserExecutablePath]
+          : []),
+        "open",
+        "about:blank",
+      ]);
+      await this.run([
+        "set",
+        "viewport",
+        String(this.options.width),
+        String(this.options.height),
+        String(this.options.pixelRatio),
+      ]);
+    } catch (error) {
+      await this.close().catch(() => undefined);
+      throw error;
+    }
   }
+
+  private run(arguments_: string[]): Promise<string> {
+    return this.commandRunner.run([
+      "--session",
+      this.sessionName,
+      "--namespace",
+      "divvy-bot",
+      ...arguments_,
+    ]);
+  }
+}
+
+class ProcessAgentBrowserCommandRunner
+  implements AgentBrowserCommandRunner
+{
+  constructor(private readonly binaryPath: string) {}
+
+  run(arguments_: string[]): Promise<string> {
+    return new Promise((resolvePromise, rejectPromise) => {
+      execFile(
+        this.binaryPath,
+        arguments_,
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            AGENT_BROWSER_DEFAULT_TIMEOUT: "45000",
+            AGENT_BROWSER_IDLE_TIMEOUT_MS: "60000",
+          },
+          maxBuffer: 2 * 1024 * 1024,
+          timeout: 60_000,
+        },
+        (error, stdout, stderr) => {
+          if (error) {
+            const detail = [error.message, stderr, stdout]
+              .map((value) => value.trim())
+              .filter(Boolean)
+              .join("\n");
+            rejectPromise(
+              new Error(
+                redactBrowserSecrets(
+                  detail || "agent-browser command failed",
+                ),
+              ),
+            );
+            return;
+          }
+          resolvePromise(stdout.trim());
+        },
+      );
+    });
+  }
+}
+
+interface RenderState {
+  status: "loading" | "done" | "error";
+  error?: string;
+}
+
+function parseRenderState(output: string): RenderState {
+  try {
+    const response = JSON.parse(output) as {
+      success?: boolean;
+      data?: { result?: RenderState };
+      error?: unknown;
+    };
+    const state = response.data?.result;
+    if (!response.success || !state) {
+      throw new Error(
+        typeof response.error === "string"
+          ? response.error
+          : "agent-browser returned no render state",
+      );
+    }
+    return state;
+  } catch (error) {
+    throw new Error(
+      `Could not parse agent-browser render state: ${errorMessage(error)}`,
+    );
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function redactBrowserSecrets(value: string): string {
+  return value.replace(
+    /([?&]key=)[^&\s"'<>\\]+/giu,
+    "$1[REDACTED]",
+  );
 }
 
 async function compressMap(png: Buffer): Promise<Buffer> {
@@ -240,6 +310,135 @@ async function compressMap(png: Buffer): Promise<Buffer> {
   }
 
   throw new Error("Could not compress map below the Bluesky image limit");
+}
+
+interface MapDocumentPayload {
+  station: StationSnapshot;
+  styleUrl: string;
+  zoom: number;
+  eyebrow: string;
+  announcementStyle: AnnouncementStyle;
+}
+
+function completeMapDocument(
+  logoDataUrl: string,
+  fontDataUrl: string,
+  style: AnnouncementStyle,
+  payload: MapDocumentPayload,
+): string {
+  const base = mapDocument(logoDataUrl, fontDataUrl, style);
+  const withMapLibreStyle = base.replace(
+    "</head>",
+    `<style>${mapLibreStyle}</style></head>`,
+  );
+  return withMapLibreStyle.replace(
+    "</body>",
+    `<script>${mapLibreScript}</script><script>${mapBootstrapScript(
+      payload,
+    )}</script></body>`,
+  );
+}
+
+function mapBootstrapScript(payload: MapDocumentPayload): string {
+  const serializedPayload = JSON.stringify(payload).replaceAll(
+    "<",
+    "\\u003c",
+  );
+  return `
+    window.__DIVVY_RENDER_STATE = { status: "loading" };
+    (async () => {
+      try {
+        const {
+          station,
+          styleUrl,
+          zoom,
+          eyebrow,
+          announcementStyle
+        } = ${serializedPayload};
+        const title = document.querySelector("[data-title]");
+        const details = document.querySelector("[data-docks]");
+        const electricDetails = document.querySelector("[data-electric]");
+        const eyebrowElement = document.querySelector("[data-eyebrow]");
+        const statusElement = document.querySelector("[data-status]");
+        if (
+          !title ||
+          !details ||
+          !electricDetails ||
+          !eyebrowElement ||
+          !statusElement
+        ) {
+          throw new Error("Map card elements are missing");
+        }
+
+        eyebrowElement.textContent = eyebrow;
+        const isElectrified = eyebrow.toLowerCase().includes("electrified");
+        statusElement.textContent = isElectrified
+          ? "CHARGED"
+          : announcementStyle === "nightline"
+            ? "DEPLOYED"
+            : "OPEN";
+        statusElement.classList.toggle(
+          "long",
+          statusElement.textContent.length > 7
+        );
+        title.textContent = station.stationName.replace(/\\*$/, "");
+        details.textContent = station.totalDocks + " docks";
+        electricDetails.hidden = !station.isElectric;
+        const stationNameLength = title.textContent.length;
+        if (stationNameLength > 34) {
+          title.classList.add("very-long");
+        } else if (stationNameLength > 24) {
+          title.classList.add("long");
+        }
+
+        await new Promise((resolvePromise, rejectPromise) => {
+          const map = new maplibregl.Map({
+            container: "map",
+            style: styleUrl,
+            center: [station.longitude, station.latitude],
+            zoom,
+            attributionControl: false,
+            interactive: false,
+            fadeDuration: 0,
+            preserveDrawingBuffer: true
+          });
+          let loaded = false;
+          const timeout = window.setTimeout(() => {
+            rejectPromise(
+              new Error("Timed out waiting for Protomaps to render")
+            );
+          }, 30000);
+
+          map.on("error", (event) => {
+            if (event && event.error) {
+              window.clearTimeout(timeout);
+              rejectPromise(event.error);
+            }
+          });
+          map.on("load", () => {
+            loaded = true;
+          });
+          map.on("idle", () => {
+            if (!loaded) {
+              return;
+            }
+            window.clearTimeout(timeout);
+            resolvePromise();
+          });
+        });
+        await document.fonts.ready;
+        window.__DIVVY_RENDER_STATE = { status: "done" };
+      } catch (error) {
+        window.__DIVVY_RENDER_STATE = {
+          status: "error",
+          error:
+            error && typeof error.message === "string"
+              ? error.message
+              : String(error)
+        };
+      }
+    })();
+  `;
 }
 
 function mapDocument(

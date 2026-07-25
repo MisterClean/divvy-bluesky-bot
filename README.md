@@ -39,15 +39,21 @@ announce every station already in the system.
 
 - Node.js 24 LTS
 - npm
-- Chromium installed through Playwright for map rendering
+- Chrome or Chromium for MapLibre rendering through the native
+  `agent-browser` CLI
 
 For a local checkout:
 
 ```bash
 npm install
-npx playwright install chromium
+npx agent-browser install
 cp .env.example .env
 ```
+
+`agent-browser` also discovers an existing Chrome or Chromium installation.
+The production Alpine image uses system Chromium plus Alpine's matching
+SwiftShader package for software WebGL rather than downloading another
+browser.
 
 ## Configuration
 
@@ -67,6 +73,9 @@ https://api.protomaps.com/styles/v5/light/en.json?key=PROTOMAPS_KEY
 ```
 
 Set `PROTOMAPS_STYLE_URL` instead when testing or using a self-hosted style.
+The prepared cards use a `1080x1350` viewport and `MAP_PIXEL_RATIO=1`, producing
+an exact 1080x1350 image. Civic cards use `MAP_ZOOM=17`; nightline cards use
+`MAP_NIGHTLINE_ZOOM=17.5`.
 
 ## Commands
 
@@ -107,15 +116,20 @@ npm run build
 ```
 
 The test suite covers safe configuration defaults, first-run behavior,
-idempotent station discovery, committed electrification transitions, retry
-state, and post content.
+legacy database import, idempotent station discovery, committed
+electrification transitions, retry state, browser orchestration, secret
+redaction, and post content.
 
 ## Docker and Lightsail
 
 Build the production image:
 
 ```bash
-docker build -t divvy-bluesky-bot:2 .
+docker buildx build \
+  --platform linux/amd64 \
+  --load \
+  -t divvy-bluesky-bot:2.0.0 \
+  .
 ```
 
 On the Lightsail host:
@@ -126,10 +140,12 @@ On the Lightsail host:
 4. Import the production legacy database before the first refactored run.
 5. Install `deploy/divvy-bot.service` and `deploy/divvy-bot.timer` under
    `/etc/systemd/system`.
-6. Leave `PUBLISH_ENABLED=false` during the shadow period.
+6. Optionally set an immutable registry digest in
+   `/etc/divvy-bot-image.env` as `DIVVY_BOT_IMAGE=...@sha256:...`.
+7. Leave `PUBLISH_ENABLED=false` during the shadow period.
 
-The included timer runs at 12:00 UTC daily, matching the bot's current posting
-window. Enable it with:
+The included timer runs at 00:00, 06:00, 12:00, and 18:00 UTC, matching the
+legacy PM2 schedule. Enable it with:
 
 ```bash
 sudo systemctl daemon-reload
@@ -143,6 +159,10 @@ sudo systemctl start divvy-bot.service
 sudo journalctl -u divvy-bot.service
 ```
 
+Use a disposable database for shadow runs. After the legacy PM2 schedule is
+disabled, create a fresh target database from a final, integrity-checked
+production backup; do not promote the shadow database.
+
 Only set `PUBLISH_ENABLED=true` after disabling the legacy cron job and
 confirming the pending delivery count is expected.
 
@@ -150,5 +170,6 @@ confirming the pending delivery count is expected.
 
 The original Python files and tracked 2024 SQLite snapshot remain in this
 branch temporarily to support production-state comparison and migration. They
-are not invoked by the TypeScript worker and should be removed after the
-Lightsail cutover is verified.
+are not invoked by the TypeScript worker, must not be used as the production
+migration source, and should be removed after the Lightsail cutover is
+verified.

@@ -24,7 +24,10 @@ const environmentSchema = z
     PROTOMAPS_STYLE_URL: z.url().optional(),
     MAP_WIDTH: z.coerce.number().int().min(600).max(2400).default(1080),
     MAP_HEIGHT: z.coerce.number().int().min(600).max(2400).default(1350),
+    MAP_PIXEL_RATIO: z.coerce.number().min(1).max(3).default(1),
     MAP_ZOOM: z.coerce.number().min(12).max(19).default(17),
+    MAP_NIGHTLINE_ZOOM: z.coerce.number().min(12).max(19).default(17.5),
+    AGENT_BROWSER_EXECUTABLE_PATH: z.string().min(1).optional(),
     STREETVIEW_ENABLED: booleanFromEnv.default(false),
     GOOGLE_MAPS_API_KEY: z.string().min(1).optional(),
     STREETVIEW_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
@@ -80,7 +83,10 @@ export interface AppConfig {
   protomapsStyleUrl?: string;
   mapWidth: number;
   mapHeight: number;
+  mapPixelRatio: number;
   mapZoom: number;
+  mapNightlineZoom: number;
+  agentBrowserExecutablePath?: string;
   streetViewEnabled: boolean;
   googleMapsApiKey?: string;
   streetViewTimeoutMs: number;
@@ -120,7 +126,15 @@ export function loadConfig(
     ...(protomapsStyleUrl ? { protomapsStyleUrl } : {}),
     mapWidth: environment.MAP_WIDTH,
     mapHeight: environment.MAP_HEIGHT,
+    mapPixelRatio: environment.MAP_PIXEL_RATIO,
     mapZoom: environment.MAP_ZOOM,
+    mapNightlineZoom: environment.MAP_NIGHTLINE_ZOOM,
+    ...(environment.AGENT_BROWSER_EXECUTABLE_PATH
+      ? {
+          agentBrowserExecutablePath:
+            environment.AGENT_BROWSER_EXECUTABLE_PATH,
+        }
+      : {}),
     streetViewEnabled: environment.STREETVIEW_ENABLED,
     ...(environment.GOOGLE_MAPS_API_KEY
       ? { googleMapsApiKey: environment.GOOGLE_MAPS_API_KEY }
