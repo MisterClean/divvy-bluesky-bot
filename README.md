@@ -8,9 +8,13 @@ The refactored worker uses:
 
 - the City of Chicago Socrata JSON API as its station source;
 - SQLite for station state, domain events, delivery retries, and run history;
-- Protomaps rendered through MapLibre GL for static location images;
+- Protomaps Light rendered through MapLibre GL for 4:5 announcement images;
 - Google Street View as an optional second image;
 - the AT Protocol API for deterministic Bluesky record creation.
+
+Station announcements alternate between civic and nightline visual treatments.
+The chosen treatment is stored with each delivery, so retries render the same
+card instead of changing styles.
 
 Publishing is disabled by default.
 

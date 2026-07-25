@@ -5,7 +5,10 @@ import type { Browser } from "playwright";
 import { chromium } from "playwright";
 import sharp from "sharp";
 import type { AppConfig } from "../config.js";
-import type { StationSnapshot } from "../domain/station.js";
+import type {
+  AnnouncementStyle,
+  StationSnapshot,
+} from "../domain/station.js";
 import { assertImageSize, MAX_IMAGE_BYTES, type PostImage } from "./image.js";
 
 const require = createRequire(import.meta.url);
@@ -21,7 +24,7 @@ const municipalFontDataUrl = `data:font/ttf;base64,${readFileSync(
 export interface StationMapRenderer {
   render(
     station: StationSnapshot,
-    options?: { eyebrow: string },
+    options?: { eyebrow: string; style?: AnnouncementStyle },
   ): Promise<PostImage>;
   close(): Promise<void>;
 }
@@ -55,8 +58,12 @@ export class ProtomapsRenderer implements StationMapRenderer {
 
   async render(
     station: StationSnapshot,
-    renderOptions: { eyebrow: string } = { eyebrow: "New Divvy Station" },
+    renderOptions: {
+      eyebrow: string;
+      style?: AnnouncementStyle;
+    } = { eyebrow: "New Divvy Station" },
   ): Promise<PostImage> {
+    const announcementStyle = renderOptions.style ?? "civic";
     const browser = await this.getBrowser();
     const page = await browser.newPage({
       viewport: {
@@ -68,7 +75,11 @@ export class ProtomapsRenderer implements StationMapRenderer {
 
     try {
       await page.setContent(
-        mapDocument(divvyLogoDataUrl, municipalFontDataUrl),
+        mapDocument(
+          divvyLogoDataUrl,
+          municipalFontDataUrl,
+          announcementStyle,
+        ),
         {
           waitUntil: "domcontentloaded",
         },
@@ -76,7 +87,13 @@ export class ProtomapsRenderer implements StationMapRenderer {
       await page.addStyleTag({ path: mapLibreStylePath });
       await page.addScriptTag({ path: mapLibreScriptPath });
       await page.evaluate(
-        async ({ station, styleUrl, zoom, eyebrow }) => {
+        async ({
+          station,
+          styleUrl,
+          zoom,
+          eyebrow,
+          announcementStyle,
+        }) => {
           const globalWindow = window as typeof window & {
             maplibregl: {
               Map: new (options: Record<string, unknown>) => {
@@ -110,8 +127,15 @@ export class ProtomapsRenderer implements StationMapRenderer {
 
           eyebrowElement.textContent = eyebrow;
           const isElectrified = eyebrow.toLowerCase().includes("electrified");
-          statusElement.textContent = isElectrified ? "CHARGED" : "OPEN";
-          statusElement.classList.toggle("long", isElectrified);
+          statusElement.textContent = isElectrified
+            ? "CHARGED"
+            : announcementStyle === "nightline"
+              ? "DEPLOYED"
+              : "OPEN";
+          statusElement.classList.toggle(
+            "long",
+            statusElement.textContent.length > 7,
+          );
           title.textContent = station.stationName.replace(/\*$/, "");
           details.textContent = `${station.totalDocks} docks`;
           electricDetails.hidden = !station.isElectric;
@@ -177,7 +201,8 @@ export class ProtomapsRenderer implements StationMapRenderer {
                 paint: {
                   "circle-radius": 39,
                   "circle-color": "#ffffff",
-                  "circle-stroke-color": "#071d3a",
+                  "circle-stroke-color":
+                    announcementStyle === "nightline" ? "#010205" : "#071d3a",
                   "circle-stroke-width": 4,
                 },
               });
@@ -198,6 +223,7 @@ export class ProtomapsRenderer implements StationMapRenderer {
           styleUrl: this.options.styleUrl,
           zoom: this.options.zoom,
           eyebrow: renderOptions.eyebrow,
+          announcementStyle,
         },
       );
 
@@ -250,7 +276,17 @@ async function compressMap(png: Buffer): Promise<Buffer> {
   throw new Error("Could not compress map below the Bluesky image limit");
 }
 
-function mapDocument(logoDataUrl: string, fontDataUrl: string): string {
+function mapDocument(
+  logoDataUrl: string,
+  fontDataUrl: string,
+  style: AnnouncementStyle,
+): string {
+  return style === "nightline"
+    ? nightlineMapDocument(logoDataUrl, fontDataUrl)
+    : civicMapDocument(logoDataUrl, fontDataUrl);
+}
+
+function civicMapDocument(logoDataUrl: string, fontDataUrl: string): string {
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -475,6 +511,205 @@ function mapDocument(logoDataUrl: string, fontDataUrl: string): string {
       </div>
     </section>
     <div class="civic-stripes" aria-hidden="true"></div>
+    <div class="attribution">© Protomaps · © OpenStreetMap contributors</div>
+  </body>
+</html>`;
+}
+
+function nightlineMapDocument(
+  logoDataUrl: string,
+  fontDataUrl: string,
+): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <style>
+      @font-face {
+        font-family: "Big Shoulders Text";
+        font-style: normal;
+        font-weight: 100 900;
+        src: url("${fontDataUrl}") format("truetype");
+      }
+      * { box-sizing: border-box; }
+      html, body, #map { height: 100%; width: 100%; margin: 0; }
+      body {
+        overflow: hidden;
+        background: #010205;
+        color: #ffffff;
+        font-family: "Big Shoulders Text", "Arial Narrow", sans-serif;
+      }
+      #map {
+        filter: saturate(0.9) contrast(1.08) brightness(0.9);
+      }
+      .map-vignette {
+        position: absolute;
+        z-index: 3;
+        inset: 0;
+        background:
+          radial-gradient(circle at 50% 48%, rgba(81, 194, 240, 0.05), transparent 24%, rgba(1, 2, 5, 0.12) 72%),
+          linear-gradient(180deg, rgba(1, 2, 5, 0.1) 0%, transparent 48%),
+          linear-gradient(180deg, transparent 46%, rgba(1, 2, 5, 0.08) 56%, rgba(1, 2, 5, 0.86) 73%, #010205 88%);
+        pointer-events: none;
+      }
+      .signal-line {
+        position: absolute;
+        z-index: 4;
+        top: 50%;
+        right: 0;
+        left: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent 0 11%, rgba(81, 194, 240, 0.28) 31%, #51c2f0 50%, rgba(81, 194, 240, 0.28) 69%, transparent 89%);
+        box-shadow: 0 0 18px rgba(81, 194, 240, 0.48);
+      }
+      .focus-ring {
+        position: absolute;
+        z-index: 4;
+        top: 50%;
+        left: 50%;
+        width: 154px;
+        height: 154px;
+        border: 3px solid rgba(255, 255, 255, 0.92);
+        border-radius: 50%;
+        box-shadow:
+          0 0 0 13px rgba(1, 2, 5, 0.22),
+          0 0 0 17px #51c2f0,
+          0 0 62px rgba(81, 194, 240, 0.7);
+        transform: translate(-50%, -50%);
+      }
+      .station-star {
+        position: absolute;
+        z-index: 5;
+        top: 50%;
+        left: 50%;
+        width: 73px;
+        height: 73px;
+        color: #e4002b;
+        filter: drop-shadow(0 2px 3px rgba(1, 2, 5, 0.44));
+        font: 400 89px/0.82 Arial, "Noto Sans Symbols 2", sans-serif;
+        text-align: center;
+        transform: translate(-50%, -50%);
+      }
+      .brand {
+        position: absolute;
+        z-index: 5;
+        top: 48px;
+        left: 48px;
+        width: 172px;
+      }
+      .brand img {
+        display: block;
+        width: 100%;
+        height: auto;
+        filter: brightness(0) invert(1);
+      }
+      .station-card {
+        position: absolute;
+        z-index: 5;
+        right: 34px;
+        bottom: 40px;
+        left: 34px;
+        text-align: center;
+      }
+      .announcement-label {
+        display: inline-flex;
+        align-items: center;
+        min-height: 40px;
+        margin: 0 0 10px;
+        padding: 3px 16px 1px;
+        background: #e4002b;
+        color: #ffffff;
+        font-size: 25px;
+        font-weight: 900;
+        letter-spacing: 0.16em;
+        line-height: 1;
+        text-transform: uppercase;
+      }
+      .status {
+        margin: 0 0 16px;
+        color: #ffffff;
+        font-size: 214px;
+        font-weight: 900;
+        letter-spacing: -0.045em;
+        line-height: 0.8;
+        text-shadow: 7px 7px 0 rgba(81, 194, 240, 0.82);
+        text-transform: uppercase;
+      }
+      .status.long {
+        font-size: 188px;
+        letter-spacing: -0.035em;
+      }
+      h1 {
+        margin: 0;
+        color: #ffffff;
+        font-size: 72px;
+        font-weight: 800;
+        line-height: 0.92;
+        letter-spacing: -0.018em;
+        text-transform: uppercase;
+      }
+      h1.long {
+        font-size: 61px;
+      }
+      h1.very-long {
+        font-size: 50px;
+      }
+      .details-row {
+        display: flex;
+        justify-content: center;
+        gap: 18px;
+        margin-top: 20px;
+      }
+      .details {
+        display: inline-flex;
+        align-items: center;
+        color: #b7bec8;
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .details + .details::before {
+        margin-right: 18px;
+        color: #51c2f0;
+        content: "/";
+      }
+      .details.electric {
+        color: #b7bec8;
+      }
+      .details[hidden] {
+        display: none;
+      }
+      .attribution {
+        position: absolute;
+        z-index: 5;
+        right: 18px;
+        bottom: 12px;
+        color: rgba(255, 255, 255, 0.36);
+        font: 500 11px/1 Roboto, Arial, sans-serif;
+        line-height: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div class="map-vignette"></div>
+    <div class="signal-line" aria-hidden="true"></div>
+    <div class="focus-ring" aria-hidden="true"></div>
+    <div class="station-star" aria-hidden="true">✶</div>
+    <div class="brand" aria-label="Divvy">
+      <img src="${logoDataUrl}" alt="Divvy">
+    </div>
+    <section class="station-card" aria-label="Divvy station details">
+      <p class="announcement-label" data-eyebrow></p>
+      <p class="status" data-status></p>
+      <h1 data-title></h1>
+      <div class="details-row">
+        <div class="details">Now in service</div>
+        <div class="details" data-docks></div>
+        <div class="details electric" data-electric>⚡️ Electrified</div>
+      </div>
+    </section>
     <div class="attribution">© Protomaps · © OpenStreetMap contributors</div>
   </body>
 </html>`;

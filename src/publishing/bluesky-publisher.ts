@@ -67,6 +67,7 @@ export class BlueskyPublisher implements DeliveryPublisher {
           delivery.payload.type === "station.electrified"
             ? "Divvy station electrified"
             : "New Divvy station",
+        style: delivery.announcementStyle,
       }),
     ];
 

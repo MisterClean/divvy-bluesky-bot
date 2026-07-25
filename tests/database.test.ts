@@ -50,6 +50,26 @@ describe("BotDatabase reconciliation", () => {
     }
   });
 
+  it("persists alternating announcement styles in delivery order", () => {
+    const database = createDatabase();
+    try {
+      database.reconcileStations([station()]);
+      database.reconcileStations([
+        station(),
+        station({ id: "station-2", stationName: "Second Station" }),
+        station({ id: "station-3", stationName: "Third Station" }),
+        station({ id: "station-4", stationName: "Fourth Station" }),
+      ]);
+
+      const deliveries = database.listReadyDeliveries(10);
+      expect(
+        deliveries.map((delivery) => delivery.announcementStyle),
+      ).toEqual(["civic", "nightline", "civic"]);
+    } finally {
+      database.close();
+    }
+  });
+
   it("queues an electrification transition once and commits the new state", () => {
     const database = createDatabase();
     try {

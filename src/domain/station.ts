@@ -13,6 +13,7 @@ export interface StationSnapshot {
 }
 
 export type StationEventType = "station.discovered" | "station.electrified";
+export type AnnouncementStyle = "civic" | "nightline";
 
 export interface StationEventPayload {
   type: StationEventType;
