@@ -14,6 +14,9 @@ const mapLibreStylePath = require.resolve("maplibre-gl/dist/maplibre-gl.css");
 const divvyLogoDataUrl = `data:image/svg+xml;base64,${readFileSync(
   resolve(process.cwd(), "assets/divvy-logo.svg"),
 ).toString("base64")}`;
+const municipalFontDataUrl = `data:font/ttf;base64,${readFileSync(
+  resolve(process.cwd(), "assets/fonts/BigShouldersText-Variable.ttf"),
+).toString("base64")}`;
 
 export interface StationMapRenderer {
   render(
@@ -64,9 +67,12 @@ export class ProtomapsRenderer implements StationMapRenderer {
     });
 
     try {
-      await page.setContent(mapDocument(divvyLogoDataUrl), {
-        waitUntil: "domcontentloaded",
-      });
+      await page.setContent(
+        mapDocument(divvyLogoDataUrl, municipalFontDataUrl),
+        {
+          waitUntil: "domcontentloaded",
+        },
+      );
       await page.addStyleTag({ path: mapLibreStylePath });
       await page.addScriptTag({ path: mapLibreScriptPath });
       await page.evaluate(
@@ -90,11 +96,22 @@ export class ProtomapsRenderer implements StationMapRenderer {
             document.querySelector<HTMLElement>("[data-electric]");
           const eyebrowElement =
             document.querySelector<HTMLElement>("[data-eyebrow]");
-          if (!title || !details || !electricDetails || !eyebrowElement) {
+          const statusElement =
+            document.querySelector<HTMLElement>("[data-status]");
+          if (
+            !title ||
+            !details ||
+            !electricDetails ||
+            !eyebrowElement ||
+            !statusElement
+          ) {
             throw new Error("Map card elements are missing");
           }
 
           eyebrowElement.textContent = eyebrow;
+          const isElectrified = eyebrow.toLowerCase().includes("electrified");
+          statusElement.textContent = isElectrified ? "CHARGED" : "NEW";
+          statusElement.classList.toggle("long", isElectrified);
           title.textContent = station.stationName.replace(/\*$/, "");
           details.textContent = `${station.totalDocks} docks`;
           electricDetails.hidden = !station.isElectric;
@@ -174,6 +191,7 @@ export class ProtomapsRenderer implements StationMapRenderer {
               resolve();
             });
           });
+          await document.fonts.ready;
         },
         {
           station,
@@ -232,121 +250,137 @@ async function compressMap(png: Buffer): Promise<Buffer> {
   throw new Error("Could not compress map below the Bluesky image limit");
 }
 
-function mapDocument(logoDataUrl: string): string {
+function mapDocument(logoDataUrl: string, fontDataUrl: string): string {
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <style>
+      @font-face {
+        font-family: "Big Shoulders Text";
+        font-style: normal;
+        font-weight: 100 900;
+        src: url("${fontDataUrl}") format("truetype");
+      }
       * { box-sizing: border-box; }
       html, body, #map { height: 100%; width: 100%; margin: 0; }
       body {
         overflow: hidden;
-        background: #e2e8f0;
+        background: #020306;
         color: #ffffff;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family: "Big Shoulders Text", "Arial Narrow", sans-serif;
       }
       #map {
-        filter: saturate(0.9) contrast(1.03);
+        filter: saturate(0.58) contrast(1.35) brightness(0.58);
       }
       .map-vignette {
         position: absolute;
         z-index: 3;
         inset: 0;
         background:
-          linear-gradient(180deg, rgba(2, 6, 23, 0.18) 0%, transparent 26%),
-          linear-gradient(180deg, transparent 35%, rgba(2, 6, 23, 0.26) 58%, rgba(2, 6, 23, 0.98) 100%);
+          radial-gradient(circle at 50% 48%, transparent 0 9%, rgba(2, 3, 6, 0.1) 28%, rgba(2, 3, 6, 0.46) 72%),
+          linear-gradient(180deg, rgba(2, 3, 6, 0.46) 0%, transparent 25%),
+          linear-gradient(180deg, transparent 31%, rgba(2, 3, 6, 0.18) 48%, rgba(2, 3, 6, 0.94) 69%, #020306 84%);
         pointer-events: none;
+      }
+      .focus-ring {
+        position: absolute;
+        z-index: 4;
+        top: 50%;
+        left: 50%;
+        width: 118px;
+        height: 118px;
+        border: 2px solid rgba(81, 194, 240, 0.8);
+        border-radius: 50%;
+        box-shadow: 0 0 0 16px rgba(81, 194, 240, 0.12), 0 0 58px rgba(81, 194, 240, 0.34);
+        transform: translate(-50%, -50%);
       }
       .brand {
         position: absolute;
         z-index: 5;
-        top: 38px;
-        left: 38px;
-        display: grid;
-        place-items: center;
-        width: 244px;
-        height: 92px;
-        padding: 20px 24px;
-        border: 1px solid rgba(255, 255, 255, 0.7);
-        border-radius: 18px;
-        background: rgba(255, 255, 255, 0.96);
-        box-shadow: 0 14px 32px rgba(2, 6, 23, 0.24);
+        top: 48px;
+        left: 48px;
+        width: 172px;
       }
       .brand img {
         display: block;
         width: 100%;
         height: auto;
+        filter: brightness(0) invert(1);
       }
       .station-card {
         position: absolute;
         z-index: 5;
-        right: 44px;
-        bottom: 58px;
-        left: 44px;
+        right: 42px;
+        bottom: 42px;
+        left: 42px;
+        text-align: center;
       }
       .announcement-label {
-        position: relative;
         display: inline-flex;
         align-items: center;
-        min-height: 42px;
-        margin: 0 0 16px;
-        padding-left: 20px;
-        color: #ffffff;
-        font-size: 24px;
-        font-weight: 900;
-        letter-spacing: 0.085em;
+        min-height: 44px;
+        margin: 0 0 2px;
+        padding: 5px 17px 3px;
+        border: 1px solid rgba(81, 194, 240, 0.74);
+        border-radius: 999px;
+        color: #51c2f0;
+        font-size: 27px;
+        font-weight: 800;
+        letter-spacing: 0.13em;
         line-height: 1;
-        text-shadow: 0 3px 16px rgba(2, 6, 23, 0.72);
         text-transform: uppercase;
       }
-      .announcement-label::before {
-        position: absolute;
-        left: 0;
-        width: 8px;
-        height: 38px;
-        border-radius: 0 8px 8px 0;
-        background: #51c2f0;
-        content: "";
+      .status {
+        margin: -9px 0 8px;
+        color: #ffffff;
+        font-size: 300px;
+        font-weight: 900;
+        letter-spacing: -0.055em;
+        line-height: 0.84;
+        text-transform: uppercase;
+      }
+      .status.long {
+        font-size: 214px;
+        letter-spacing: -0.04em;
       }
       h1 {
         margin: 0;
-        max-width: 1080px;
         color: #ffffff;
-        font-size: 94px;
-        font-weight: 950;
+        font-size: 73px;
+        font-weight: 800;
         line-height: 0.92;
-        letter-spacing: -0.055em;
-        text-shadow: 0 4px 24px rgba(2, 6, 23, 0.5);
+        letter-spacing: -0.025em;
         text-transform: uppercase;
       }
       h1.long {
-        font-size: 74px;
+        font-size: 61px;
       }
       h1.very-long {
-        font-size: 60px;
+        font-size: 50px;
       }
       .details-row {
         display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        margin-top: 24px;
+        justify-content: center;
+        gap: 28px;
+        margin-top: 17px;
       }
       .details {
         display: inline-flex;
         align-items: center;
-        min-height: 52px;
-        padding: 10px 18px;
-        border-radius: 10px;
-        background: #51c2f0;
-        color: #07111f;
-        font-size: 25px;
-        font-weight: 900;
-        letter-spacing: 0.025em;
+        color: #d9dde4;
+        font-size: 29px;
+        font-weight: 700;
+        letter-spacing: 0.09em;
         text-transform: uppercase;
       }
+      .details + .details::before {
+        margin-right: 28px;
+        color: #51c2f0;
+        content: "•";
+      }
       .details.electric {
-        background: #facc15;
+        color: #d9dde4;
       }
       .details[hidden] {
         display: none;
@@ -355,23 +389,23 @@ function mapDocument(logoDataUrl: string): string {
         position: absolute;
         z-index: 5;
         right: 18px;
-        bottom: 14px;
-        color: rgba(255, 255, 255, 0.9);
-        font-size: 12px;
-        font-weight: 600;
+        bottom: 12px;
+        color: rgba(255, 255, 255, 0.42);
+        font: 500 11px/1 Roboto, Arial, sans-serif;
         line-height: 1;
-        text-shadow: 0 1px 5px rgba(2, 6, 23, 0.9);
       }
     </style>
   </head>
   <body>
     <div id="map"></div>
     <div class="map-vignette"></div>
+    <div class="focus-ring" aria-hidden="true"></div>
     <div class="brand" aria-label="Divvy">
       <img src="${logoDataUrl}" alt="Divvy">
     </div>
     <section class="station-card" aria-label="Divvy station details">
       <p class="announcement-label" data-eyebrow></p>
+      <p class="status" data-status></p>
       <h1 data-title></h1>
       <div class="details-row">
         <div class="details" data-docks></div>
