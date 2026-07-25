@@ -26,6 +26,7 @@ wheels/
 .venv
 venv/
 ENV/
+node_modules/
 
 # IDE
 .idea/
@@ -36,3 +37,10 @@ ENV/
 # Project specific
 logs/
 output/
+dist/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+data/*.sqlite3
+data/*.sqlite3-shm
+data/*.sqlite3-wal
