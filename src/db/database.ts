@@ -4,6 +4,7 @@ import path from "node:path";
 import { TID } from "@atproto/common-web";
 import BetterSqlite3, { type Database as SqliteDatabase } from "better-sqlite3";
 import type {
+  AnnouncementStyle,
   StationEventPayload,
   StationEventType,
   StationSnapshot,
@@ -30,6 +31,7 @@ interface DeliveryRow {
   id: string;
   event_id: string;
   record_key: string;
+  announcement_style: AnnouncementStyle;
   status: DeliveryStatus;
   attempts: number;
   payload: string;
@@ -57,6 +59,7 @@ export interface PendingDelivery {
   id: string;
   eventId: string;
   recordKey: string;
+  announcementStyle: AnnouncementStyle;
   status: DeliveryStatus;
   attempts: number;
   payload: StationEventPayload;
@@ -219,6 +222,7 @@ export class BotDatabase {
           deliveries.id,
           deliveries.event_id,
           deliveries.record_key,
+          deliveries.announcement_style,
           deliveries.status,
           deliveries.attempts,
           events.payload
@@ -226,7 +230,7 @@ export class BotDatabase {
         JOIN events ON events.id = deliveries.event_id
         WHERE deliveries.status IN ('pending', 'retrying')
           AND deliveries.next_attempt_at <= ?
-        ORDER BY deliveries.created_at, deliveries.id
+        ORDER BY deliveries.rowid
         LIMIT ?
       `)
       .all(now, limit) as DeliveryRow[];
@@ -422,19 +426,35 @@ export class BotDatabase {
     this.sqlite
       .prepare(`
         INSERT INTO deliveries (
-          id, event_id, record_key, status, next_attempt_at, created_at
+          id, event_id, record_key, announcement_style, status,
+          next_attempt_at, created_at
         ) VALUES (
-          @id, @eventId, @recordKey, 'pending', @createdAt, @createdAt
+          @id, @eventId, @recordKey, @announcementStyle, 'pending',
+          @createdAt, @createdAt
         )
       `)
       .run({
         id: randomUUID(),
         eventId,
         recordKey: TID.nextStr(),
+        announcementStyle: this.nextAnnouncementStyle(),
         createdAt: observedAt,
       });
 
     return true;
+  }
+
+  private nextAnnouncementStyle(): AnnouncementStyle {
+    const previous = this.sqlite
+      .prepare(`
+        SELECT announcement_style
+        FROM deliveries
+        ORDER BY rowid DESC
+        LIMIT 1
+      `)
+      .get() as { announcement_style: AnnouncementStyle } | undefined;
+
+    return previous?.announcement_style === "civic" ? "nightline" : "civic";
   }
 
   private migrate(): void {
@@ -498,6 +518,7 @@ function deliveryFromRow(row: DeliveryRow): PendingDelivery {
     id: row.id,
     eventId: row.event_id,
     recordKey: row.record_key,
+    announcementStyle: row.announcement_style,
     status: row.status,
     attempts: row.attempts,
     payload: JSON.parse(row.payload) as StationEventPayload,

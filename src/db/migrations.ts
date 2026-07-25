@@ -70,4 +70,19 @@ export const migrations: Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    name: "persist alternating announcement styles",
+    sql: `
+      ALTER TABLE deliveries
+      ADD COLUMN announcement_style TEXT
+      CHECK (announcement_style IN ('civic', 'nightline'));
+
+      UPDATE deliveries
+      SET announcement_style = CASE
+        WHEN rowid % 2 = 1 THEN 'civic'
+        ELSE 'nightline'
+      END;
+    `,
+  },
 ];
