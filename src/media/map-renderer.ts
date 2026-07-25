@@ -1,4 +1,6 @@
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { Browser } from "playwright";
 import { chromium } from "playwright";
 import sharp from "sharp";
@@ -9,6 +11,9 @@ import { assertImageSize, MAX_IMAGE_BYTES, type PostImage } from "./image.js";
 const require = createRequire(import.meta.url);
 const mapLibreScriptPath = require.resolve("maplibre-gl/dist/maplibre-gl.js");
 const mapLibreStylePath = require.resolve("maplibre-gl/dist/maplibre-gl.css");
+const divvyLogoDataUrl = `data:image/svg+xml;base64,${readFileSync(
+  resolve(process.cwd(), "assets/divvy-logo.svg"),
+).toString("base64")}`;
 
 export interface StationMapRenderer {
   render(
@@ -47,7 +52,7 @@ export class ProtomapsRenderer implements StationMapRenderer {
 
   async render(
     station: StationSnapshot,
-    renderOptions: { eyebrow: string } = { eyebrow: "Divvy station" },
+    renderOptions: { eyebrow: string } = { eyebrow: "New Divvy Station" },
   ): Promise<PostImage> {
     const browser = await this.getBrowser();
     const page = await browser.newPage({
@@ -59,7 +64,9 @@ export class ProtomapsRenderer implements StationMapRenderer {
     });
 
     try {
-      await page.setContent(mapDocument(), { waitUntil: "domcontentloaded" });
+      await page.setContent(mapDocument(divvyLogoDataUrl), {
+        waitUntil: "domcontentloaded",
+      });
       await page.addStyleTag({ path: mapLibreStylePath });
       await page.addScriptTag({ path: mapLibreScriptPath });
       await page.evaluate(
@@ -90,6 +97,12 @@ export class ProtomapsRenderer implements StationMapRenderer {
           details.textContent = `${station.totalDocks} docks${
             station.isElectric ? " · Charging station" : ""
           }`;
+          const stationNameLength = title.textContent.length;
+          if (stationNameLength > 34) {
+            title.classList.add("very-long");
+          } else if (stationNameLength > 24) {
+            title.classList.add("long");
+          }
 
           await new Promise<void>((resolve, reject) => {
             const map = new globalWindow.maplibregl.Map({
@@ -133,10 +146,10 @@ export class ProtomapsRenderer implements StationMapRenderer {
                 type: "circle",
                 source: "station",
                 paint: {
-                  "circle-radius": 30,
-                  "circle-color": "#0f172a",
-                  "circle-opacity": 0.24,
-                  "circle-blur": 0.45,
+                  "circle-radius": 38,
+                  "circle-color": "#020617",
+                  "circle-opacity": 0.34,
+                  "circle-blur": 0.5,
                 },
               });
               map.addLayer({
@@ -144,10 +157,10 @@ export class ProtomapsRenderer implements StationMapRenderer {
                 type: "circle",
                 source: "station",
                 paint: {
-                  "circle-radius": 18,
-                  "circle-color": station.isElectric ? "#e11d48" : "#2563eb",
+                  "circle-radius": 22,
+                  "circle-color": station.isElectric ? "#fb7185" : "#51c2f0",
                   "circle-stroke-color": "#ffffff",
-                  "circle-stroke-width": 6,
+                  "circle-stroke-width": 7,
                 },
               });
             });
@@ -218,7 +231,7 @@ async function compressMap(png: Buffer): Promise<Buffer> {
   throw new Error("Could not compress map below the Bluesky image limit");
 }
 
-function mapDocument(): string {
+function mapDocument(logoDataUrl: string): string {
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -228,61 +241,130 @@ function mapDocument(): string {
       html, body, #map { height: 100%; width: 100%; margin: 0; }
       body {
         overflow: hidden;
-        background: #f8fafc;
-        color: #0f172a;
+        background: #e2e8f0;
+        color: #ffffff;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      #map {
+        filter: saturate(0.9) contrast(1.03);
+      }
+      .map-vignette {
+        position: absolute;
+        z-index: 3;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(2, 6, 23, 0.18) 0%, transparent 26%),
+          linear-gradient(180deg, transparent 35%, rgba(2, 6, 23, 0.26) 58%, rgba(2, 6, 23, 0.98) 100%);
+        pointer-events: none;
+      }
+      .brand {
+        position: absolute;
+        z-index: 5;
+        top: 38px;
+        left: 38px;
+        display: grid;
+        place-items: center;
+        width: 244px;
+        height: 92px;
+        padding: 20px 24px;
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 14px 32px rgba(2, 6, 23, 0.24);
+      }
+      .brand img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      .announcement-label {
+        position: absolute;
+        z-index: 5;
+        top: 38px;
+        right: 38px;
+        display: flex;
+        align-items: center;
+        min-height: 92px;
+        margin: 0;
+        padding: 18px 26px 18px 31px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 18px;
+        background: rgba(2, 6, 23, 0.9);
+        box-shadow: 0 14px 32px rgba(2, 6, 23, 0.28);
+        font-size: 25px;
+        font-weight: 900;
+        letter-spacing: 0.055em;
+        text-transform: uppercase;
+      }
+      .announcement-label::before {
+        position: absolute;
+        left: 0;
+        width: 8px;
+        height: 46px;
+        border-radius: 0 8px 8px 0;
+        background: #51c2f0;
+        content: "";
       }
       .station-card {
         position: absolute;
         z-index: 5;
-        top: 32px;
-        left: 32px;
-        right: 32px;
-        padding: 22px 26px;
-        border: 1px solid rgba(15, 23, 42, 0.12);
-        border-radius: 20px;
-        background: rgba(255, 255, 255, 0.94);
-        box-shadow: 0 16px 42px rgba(15, 23, 42, 0.16);
-        backdrop-filter: blur(10px);
-      }
-      .eyebrow {
-        margin: 0 0 6px;
-        color: #2563eb;
-        font-size: 22px;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+        right: 44px;
+        bottom: 42px;
+        left: 44px;
       }
       h1 {
         margin: 0;
-        font-size: 40px;
-        line-height: 1.08;
-        letter-spacing: -0.025em;
+        max-width: 1080px;
+        color: #ffffff;
+        font-size: 94px;
+        font-weight: 950;
+        line-height: 0.92;
+        letter-spacing: -0.055em;
+        text-shadow: 0 4px 24px rgba(2, 6, 23, 0.5);
+        text-transform: uppercase;
+      }
+      h1.long {
+        font-size: 74px;
+      }
+      h1.very-long {
+        font-size: 60px;
       }
       .details {
-        margin-top: 9px;
-        color: #475569;
-        font-size: 24px;
-        font-weight: 650;
+        display: inline-flex;
+        align-items: center;
+        min-height: 52px;
+        margin-top: 24px;
+        padding: 10px 18px;
+        border-radius: 10px;
+        background: #51c2f0;
+        color: #07111f;
+        font-size: 25px;
+        font-weight: 900;
+        letter-spacing: 0.025em;
+        text-transform: uppercase;
       }
       .attribution {
         position: absolute;
         z-index: 5;
-        right: 18px;
-        bottom: 14px;
+        top: 144px;
+        right: 38px;
         padding: 6px 9px;
         border-radius: 7px;
-        background: rgba(255, 255, 255, 0.88);
-        color: #475569;
-        font-size: 14px;
+        background: rgba(2, 6, 23, 0.66);
+        color: rgba(255, 255, 255, 0.88);
+        font-size: 13px;
         font-weight: 600;
       }
     </style>
   </head>
   <body>
     <div id="map"></div>
+    <div class="map-vignette"></div>
+    <div class="brand" aria-label="Divvy">
+      <img src="${logoDataUrl}" alt="Divvy">
+    </div>
+    <p class="announcement-label" data-eyebrow></p>
     <section class="station-card" aria-label="Divvy station details">
-      <p class="eyebrow" data-eyebrow></p>
       <h1 data-title></h1>
       <div class="details" data-details></div>
     </section>

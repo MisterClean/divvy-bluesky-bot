@@ -22,6 +22,7 @@ RUN npx playwright install --with-deps --only-shell chromium \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/dist ./dist
+COPY assets ./assets
 
 RUN mkdir -p /var/lib/divvy-bot /app/data /app/output \
     && chown -R node:node /var/lib/divvy-bot /app/data /app/output
