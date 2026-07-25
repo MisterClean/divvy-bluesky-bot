@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Divvy Station Bluesky Bot daily
+
+[Timer]
+OnCalendar=*-*-* 12:00:00 UTC
+Persistent=true
+Unit=divvy-bot.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,12 @@
+.git
+.env
+data
+dist
+legacy
+logs
+node_modules
+output
+tests
+*.sqlite
+*.sqlite3
+*.db

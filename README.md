@@ -1,119 +1,150 @@
 # Divvy Station Bluesky Bot
 
-A bot that monitors Chicago's Divvy bike share system and posts updates to Bluesky when new stations are added or existing stations are electrified.
+A one-shot TypeScript worker that monitors Chicago's Divvy station dataset and
+publishes durable, image-backed announcements to
+[`divvystationbot.bsky.social`](https://bsky.app/profile/divvystationbot.bsky.social).
 
-## Features
+The refactored worker uses:
 
-- Monitors Chicago's Divvy bike share system using the City of Chicago's open data API
-- Detects new station additions and station electrification
-- Generates both static and interactive maps showing station locations
-- Posts updates to Bluesky with station details and map images
-- Includes Google Street View images of new stations
-- Configurable post limits for new station announcements
-- Test mode for previewing posts without sending them
-- Ability to force post specific stations
-- Comprehensive logging system
-- Data validation for station information
+- the City of Chicago Socrata JSON API as its station source;
+- SQLite for station state, domain events, delivery retries, and run history;
+- Protomaps rendered through MapLibre GL for static location images;
+- Google Street View as an optional second image;
+- the AT Protocol API for deterministic Bluesky record creation.
+
+Publishing is disabled by default.
+
+## Architecture
+
+Each run performs four distinct steps:
+
+1. Fetch and validate the complete station snapshot.
+2. Reconcile it against SQLite and create durable events for new or newly
+   electrified stations.
+3. Queue a delivery for every event.
+4. When publishing is enabled, drain up to `POST_LIMIT` ready deliveries.
+
+Station state and delivery state are committed separately. A source, map,
+Street View, or Bluesky failure therefore cannot silently discard an
+announcement. The delivery remains queued with exponential backoff.
+
+The first valid station snapshot initializes a silent baseline. It does not
+announce every station already in the system.
 
 ## Requirements
 
-### Python Requirements
-- Python 3.8+
-- Required Python packages (see requirements.txt)
+- Node.js 24 LTS
+- npm
+- Chromium installed through Playwright for map rendering
 
-### System Dependencies
-#### Ubuntu/Debian:
+For a local checkout:
+
 ```bash
-sudo apt-get update
-sudo apt-get install python3-dev python3-pip \
-    libgdal-dev libspatialindex-dev \
-    libfreetype6-dev libharfbuzz-dev \
-    libjpeg-dev libpng-dev
+npm install
+npx playwright install chromium
+cp .env.example .env
 ```
-
-#### macOS:
-```bash
-brew install gdal spatialindex freetype harfbuzz
-```
-
-### API Keys and Credentials
-- Bluesky account credentials
-- Google Maps API key with Street View API enabled
-  - Enable the Street View Static API in Google Cloud Console
-  - Set up billing for the Google Cloud Project
-
-## Setup
-
-1. Clone the repository
-
-2. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Copy .env.example to .env and configure environment variables:
-   ```bash
-   cp .env.example .env
-   ```
-   Required variables:
-   - `BLUESKY_HANDLE`: Your Bluesky handle (e.g., user.bsky.social)
-   - `BLUESKY_APP_PASSWORD`: Your Bluesky app password
-   - `GOOGLE_MAPS_API_KEY`: Google Maps API key for Street View images
-   - `DB_PATH`: SQLite database path (default: data/divvy_stations.db)
-   - `LOG_LEVEL`: Logging level (default: INFO)
 
 ## Configuration
 
-The bot is configured through `config.yaml`:
+The full configuration template is in `.env.example`.
 
-### Features
-- `bluesky_posting`: Enable/disable posting to Bluesky
-- `test_mode`: Preview posts without sending them
-- `limit_new_station_posts`: Maximum number of new station posts per run (0 for unlimited)
-- `streetview_images`: Include Google Street View images in posts
-- `force_station_id`: Force post a specific station by ID
+Important safety settings:
 
-### API Settings
-- `page_size`: Number of records per API page
-- `max_retries`: Number of retries on API failure
-- `timeouts`: Configurable timeouts for API calls
+- `PUBLISH_ENABLED=false` is the default.
+- Bluesky credentials and Protomaps configuration are required before
+  publishing can be enabled.
+- Street View is independently controlled by `STREETVIEW_ENABLED`.
 
-### Logging
-- Configurable logging levels and formats
-- Logs are stored in the `logs` directory
+The default hosted Protomaps style is:
 
-## Usage
-
-Run the bot:
-```bash
-python src/main.py
+```text
+https://api.protomaps.com/styles/v5/light/en.json?key=PROTOMAPS_KEY
 ```
 
-### Test Mode
-To test the bot without posting to Bluesky:
-1. Set `test_mode: true` in config.yaml
-2. Run the bot normally - it will select a random station and simulate posting
+Set `PROTOMAPS_STYLE_URL` instead when testing or using a self-hosted style.
 
-### Force Posting
-To force post a specific station:
-1. Uncomment and set `force_station_id` in config.yaml
-2. Run the bot normally
+## Commands
 
-## Data Source
+Run one fetch/reconcile/delivery cycle:
 
-This bot uses the City of Chicago's Divvy Bicycle Stations dataset:
-https://data.cityofchicago.org/api/odata/v4/bbyy-e7gq
+```bash
+npm run dev -- run
+```
 
-Electric stations are identified by:
-- An asterisk (*) at the end of the station name
-- The word "charging" in the station's short name
+Inspect station and delivery counts:
 
-## License
+```bash
+npm run dev -- status
+```
 
-MIT
+Render a station already stored in the new database:
+
+```bash
+npm run dev -- render STATION_ID output/example.jpg
+```
+
+Import the current station baseline from the legacy production database:
+
+```bash
+DB_PATH=data/divvy-bot.sqlite3 \
+  npm run dev -- import-legacy /path/to/legacy-divvy-stations.db
+```
+
+The target database must be empty. Importing creates a silent baseline and no
+pending announcements.
+
+## Verification
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+The test suite covers safe configuration defaults, first-run behavior,
+idempotent station discovery, committed electrification transitions, retry
+state, and post content.
+
+## Docker and Lightsail
+
+Build the production image:
+
+```bash
+docker build -t divvy-bluesky-bot:2 .
+```
+
+On the Lightsail host:
+
+1. Create `/var/lib/divvy-bot` and make it writable by UID `1000`.
+2. Copy `.env.example` to `/etc/divvy-bot.env` and fill in production values.
+3. Set `DB_PATH=/var/lib/divvy-bot/bot.sqlite3`.
+4. Import the production legacy database before the first refactored run.
+5. Install `deploy/divvy-bot.service` and `deploy/divvy-bot.timer` under
+   `/etc/systemd/system`.
+6. Leave `PUBLISH_ENABLED=false` during the shadow period.
+
+The included timer runs at 12:00 UTC daily, matching the bot's current posting
+window. Enable it with:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now divvy-bot.timer
+```
+
+Before cutover, inspect several shadow runs with:
+
+```bash
+sudo systemctl start divvy-bot.service
+sudo journalctl -u divvy-bot.service
+```
+
+Only set `PUBLISH_ENABLED=true` after disabling the legacy cron job and
+confirming the pending delivery count is expected.
+
+## Legacy implementation
+
+The original Python files and tracked 2024 SQLite snapshot remain in this
+branch temporarily to support production-state comparison and migration. They
+are not invoked by the TypeScript worker and should be removed after the
+Lightsail cutover is verified.

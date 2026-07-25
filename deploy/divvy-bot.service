@@ -1,0 +1,14 @@
+[Unit]
+Description=Divvy Station Bluesky Bot
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStartPre=-/usr/bin/docker rm -f divvy-station-bot
+ExecStart=/usr/bin/docker run --rm --name divvy-station-bot --init --env-file /etc/divvy-bot.env --volume /var/lib/divvy-bot:/var/lib/divvy-bot divvy-bluesky-bot:2
+TimeoutStartSec=20min
+
+[Install]
+WantedBy=multi-user.target
