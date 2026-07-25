@@ -9,12 +9,15 @@ The refactored worker uses:
 - the City of Chicago Socrata JSON API as its station source;
 - SQLite for station state, domain events, delivery retries, and run history;
 - Protomaps Light rendered through MapLibre GL for 4:5 announcement images;
-- Google Street View as an optional second image;
+- Google Street View as an optional first threaded response;
 - the AT Protocol API for deterministic Bluesky record creation.
 
 Station announcements alternate between civic and nightline visual treatments.
 The chosen treatment is stored with each delivery, so retries render the same
-card instead of changing styles.
+card instead of changing styles. The root post contains the announcement card;
+when Street View is enabled, a single-image reply is attached to that root.
+Both images describe the complete station snapshot in alt text and link to the
+matching City of Chicago API record.
 
 Publishing is disabled by default.
 
@@ -118,7 +121,7 @@ npm run build
 The test suite covers safe configuration defaults, first-run behavior,
 legacy database import, idempotent station discovery, committed
 electrification transitions, retry state, browser orchestration, secret
-redaction, and post content.
+redaction, threaded image publishing, API-linked alt text, and post content.
 
 ## Docker and Lightsail
 

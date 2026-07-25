@@ -23,3 +23,10 @@ export function createPostText(payload: StationEventPayload): string {
       : []),
   ].join("\n");
 }
+
+export function createStreetViewPostText(
+  payload: StationEventPayload,
+): string {
+  const stationName = payload.station.stationName.replace(/\*$/, "");
+  return `📸 Street view of ${stationName}`;
+}

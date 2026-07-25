@@ -6,7 +6,10 @@ import { errorContext, logger } from "../logging.js";
 import type { PostImage } from "../media/image.js";
 import type { StationMapRenderer } from "../media/map-renderer.js";
 import type { StreetViewProvider } from "../media/streetview.js";
-import { createPostText } from "./post-content.js";
+import {
+  createPostText,
+  createStreetViewPostText,
+} from "./post-content.js";
 
 export interface PublishResult {
   uri: string;
@@ -32,8 +35,9 @@ export class BlueskyPublisher implements DeliveryPublisher {
     private readonly options: BlueskyPublisherOptions,
     private readonly mapRenderer: StationMapRenderer,
     private readonly streetView?: StreetViewProvider,
+    agent?: AtpAgent,
   ) {
-    this.agent = new AtpAgent({ service: options.serviceUrl });
+    this.agent = agent ?? new AtpAgent({ service: options.serviceUrl });
   }
 
   static fromConfig(
@@ -61,82 +65,48 @@ export class BlueskyPublisher implements DeliveryPublisher {
   async publish(delivery: PendingDelivery): Promise<PublishResult> {
     await this.authenticate();
     const station = delivery.payload.station;
-    const images = [
-      await this.mapRenderer.render(station, {
-        eyebrow:
-          delivery.payload.type === "station.electrified"
-            ? "Divvy station electrified"
-            : "New Divvy station",
-        style: delivery.announcementStyle,
-      }),
-    ];
+    const announcement = await this.mapRenderer.render(station, {
+      eyebrow:
+        delivery.payload.type === "station.electrified"
+          ? "Divvy station electrified"
+          : "New Divvy station",
+      style: delivery.announcementStyle,
+    });
+    const root = await this.publishImagePost({
+      deliveryId: delivery.id,
+      recordKey: delivery.recordKey,
+      text: createPostText(delivery.payload),
+      image: announcement,
+    });
 
     if (this.streetView) {
+      let streetViewImage: PostImage;
       try {
-        images.push(await this.streetView.fetch(station));
+        streetViewImage = await this.streetView.fetch(station);
       } catch (error) {
-        logger.warn("Street View unavailable; publishing map only", {
-          stationId: station.id,
-          ...errorContext(error),
-        });
+        logger.warn(
+          "Street View unavailable; publishing announcement only",
+          {
+            stationId: station.id,
+            ...errorContext(error),
+          },
+        );
+        return root;
       }
-    }
 
-    const uploadedImages = await Promise.all(
-      images.map(async (image) => ({
-        alt: image.alt,
-        image: await this.upload(image),
-        aspectRatio: {
-          width: image.width,
-          height: image.height,
+      await this.publishImagePost({
+        deliveryId: delivery.id,
+        recordKey: streetViewRecordKey(delivery.recordKey),
+        text: createStreetViewPostText(delivery.payload),
+        image: streetViewImage,
+        reply: {
+          root,
+          parent: root,
         },
-      })),
-    );
-    const record = {
-      $type: "app.bsky.feed.post",
-      text: createPostText(delivery.payload),
-      langs: ["en"],
-      embed: {
-        $type: "app.bsky.embed.images",
-        images: uploadedImages,
-      },
-      createdAt: new Date().toISOString(),
-    };
-    const repo = this.agent.assertDid;
-
-    try {
-      const response = await this.agent.com.atproto.repo.createRecord({
-        repo,
-        collection: "app.bsky.feed.post",
-        rkey: delivery.recordKey,
-        record,
       });
-      return {
-        uri: response.data.uri,
-        cid: response.data.cid,
-      };
-    } catch (createError) {
-      try {
-        const existing = await this.agent.com.atproto.repo.getRecord({
-          repo,
-          collection: "app.bsky.feed.post",
-          rkey: delivery.recordKey,
-        });
-        if (!existing.data.cid) {
-          throw createError;
-        }
-        logger.warn("Reconciled an already-created Bluesky record", {
-          deliveryId: delivery.id,
-          recordKey: delivery.recordKey,
-        });
-        return {
-          uri: existing.data.uri,
-          cid: existing.data.cid,
-        };
-      } catch {
-        throw createError;
-      }
     }
+
+    return root;
   }
 
   async close(): Promise<void> {
@@ -154,10 +124,87 @@ export class BlueskyPublisher implements DeliveryPublisher {
     this.authenticated = true;
   }
 
+  private async publishImagePost(options: {
+    deliveryId: string;
+    recordKey: string;
+    text: string;
+    image: PostImage;
+    reply?: {
+      root: PublishResult;
+      parent: PublishResult;
+    };
+  }): Promise<PublishResult> {
+    const uploadedImage = {
+      alt: options.image.alt,
+      image: await this.upload(options.image),
+      aspectRatio: {
+        width: options.image.width,
+        height: options.image.height,
+      },
+    };
+    const record = {
+      $type: "app.bsky.feed.post",
+      text: options.text,
+      langs: ["en"],
+      embed: {
+        $type: "app.bsky.embed.images",
+        images: [uploadedImage],
+      },
+      ...(options.reply
+        ? {
+            reply: {
+              root: options.reply.root,
+              parent: options.reply.parent,
+            },
+          }
+        : {}),
+      createdAt: new Date().toISOString(),
+    };
+    const repo = this.agent.assertDid;
+
+    try {
+      const response = await this.agent.com.atproto.repo.createRecord({
+        repo,
+        collection: "app.bsky.feed.post",
+        rkey: options.recordKey,
+        record,
+      });
+      return {
+        uri: response.data.uri,
+        cid: response.data.cid,
+      };
+    } catch (createError) {
+      try {
+        const existing = await this.agent.com.atproto.repo.getRecord({
+          repo,
+          collection: "app.bsky.feed.post",
+          rkey: options.recordKey,
+        });
+        if (!existing.data.cid) {
+          throw createError;
+        }
+        logger.warn("Reconciled an already-created Bluesky record", {
+          deliveryId: options.deliveryId,
+          recordKey: options.recordKey,
+        });
+        return {
+          uri: existing.data.uri,
+          cid: existing.data.cid,
+        };
+      } catch {
+        throw createError;
+      }
+    }
+  }
+
   private async upload(image: PostImage): Promise<BlobRef> {
     const response = await this.agent.uploadBlob(image.bytes, {
       encoding: image.mimeType,
     });
     return response.data.blob;
   }
+}
+
+export function streetViewRecordKey(rootRecordKey: string): string {
+  return `${rootRecordKey}-streetview`;
 }

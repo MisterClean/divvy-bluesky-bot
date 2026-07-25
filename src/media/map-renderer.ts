@@ -11,7 +11,12 @@ import type {
   AnnouncementStyle,
   StationSnapshot,
 } from "../domain/station.js";
-import { assertImageSize, MAX_IMAGE_BYTES, type PostImage } from "./image.js";
+import {
+  assertImageSize,
+  createStationImageAlt,
+  MAX_IMAGE_BYTES,
+  type PostImage,
+} from "./image.js";
 
 const require = createRequire(import.meta.url);
 const mapLibreScriptPath = require.resolve("maplibre-gl/dist/maplibre-gl.js");
@@ -145,7 +150,10 @@ export class ProtomapsRenderer implements StationMapRenderer {
       const image: PostImage = {
         bytes,
         mimeType: "image/jpeg",
-        alt: `Map centered on ${station.stationName.replace(/\*$/, "")}, a Divvy station at ${station.latitude.toFixed(5)}, ${station.longitude.toFixed(5)}, showing nearby streets.`,
+        alt: createStationImageAlt(
+          station,
+          `Announcement map centered on ${station.stationName.replace(/\*$/, "")}, showing the Divvy station and nearby streets.`,
+        ),
         width: Math.round(this.options.width * this.options.pixelRatio),
         height: Math.round(this.options.height * this.options.pixelRatio),
       };
@@ -524,13 +532,22 @@ function civicMapDocument(logoDataUrl: string, fontDataUrl: string): string {
         z-index: 5;
         top: 48px;
         left: 48px;
-        width: 172px;
+        display: grid;
+        place-items: center;
+        width: 246px;
+        height: 94px;
+        padding: 17px 22px;
+        border-radius: 17px;
+        background: rgba(255, 255, 255, 0.97);
+        box-shadow:
+          0 8px 18px rgba(7, 29, 58, 0.22),
+          0 2px 5px rgba(7, 29, 58, 0.16);
       }
       .brand img {
         display: block;
-        width: 100%;
-        height: auto;
-        filter: brightness(0) invert(1);
+        width: auto;
+        max-width: 100%;
+        height: 100%;
       }
       .station-card {
         position: absolute;
@@ -704,13 +721,22 @@ function nightlineMapDocument(
         z-index: 5;
         top: 48px;
         left: 48px;
-        width: 172px;
+        display: grid;
+        place-items: center;
+        width: 246px;
+        height: 94px;
+        padding: 17px 22px;
+        border-radius: 17px;
+        background: rgba(255, 255, 255, 0.97);
+        box-shadow:
+          0 8px 18px rgba(1, 2, 5, 0.32),
+          0 2px 5px rgba(1, 2, 5, 0.2);
       }
       .brand img {
         display: block;
-        width: 100%;
-        height: auto;
-        filter: brightness(0) invert(1);
+        width: auto;
+        max-width: 100%;
+        height: 100%;
       }
       .station-card {
         position: absolute;
