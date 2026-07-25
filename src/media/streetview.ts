@@ -1,7 +1,12 @@
 import sharp from "sharp";
 import type { AppConfig } from "../config.js";
 import type { StationSnapshot } from "../domain/station.js";
-import { assertImageSize, MAX_IMAGE_BYTES, type PostImage } from "./image.js";
+import {
+  assertImageSize,
+  createStationImageAlt,
+  MAX_IMAGE_BYTES,
+  type PostImage,
+} from "./image.js";
 
 export interface StreetViewProvider {
   fetch(station: StationSnapshot): Promise<PostImage>;
@@ -53,7 +58,10 @@ export class GoogleStreetViewProvider implements StreetViewProvider {
     const image: PostImage = {
       bytes,
       mimeType: "image/jpeg",
-      alt: `Google Street View near ${station.stationName.replace(/\*$/, "")}, a Divvy station in Chicago.`,
+      alt: createStationImageAlt(
+        station,
+        `Google Street View imagery near ${station.stationName.replace(/\*$/, "")}, a Divvy station in Chicago.`,
+      ),
       width: 600,
       height: 400,
     };
