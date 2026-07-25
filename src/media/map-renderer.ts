@@ -172,40 +172,6 @@ export class ProtomapsRenderer implements StationMapRenderer {
 
             map.on("load", () => {
               loaded = true;
-              map.addSource("station", {
-                type: "geojson",
-                data: {
-                  type: "Feature",
-                  properties: {},
-                  geometry: {
-                    type: "Point",
-                    coordinates: [station.longitude, station.latitude],
-                  },
-                },
-              });
-              map.addLayer({
-                id: "station-shadow",
-                type: "circle",
-                source: "station",
-                paint: {
-                  "circle-radius": 38,
-                  "circle-color": "#020617",
-                  "circle-opacity": 0.34,
-                  "circle-blur": 0.5,
-                },
-              });
-              map.addLayer({
-                id: "station-marker",
-                type: "circle",
-                source: "station",
-                paint: {
-                  "circle-radius": 39,
-                  "circle-color": "#ffffff",
-                  "circle-stroke-color":
-                    announcementStyle === "nightline" ? "#010205" : "#071d3a",
-                  "circle-stroke-width": 4,
-                },
-              });
             });
 
             map.on("idle", () => {
@@ -341,18 +307,6 @@ function civicMapDocument(logoDataUrl: string, fontDataUrl: string): string {
       .civic-stars span {
         font: 400 39px/1 Arial, "Noto Sans Symbols 2", sans-serif;
       }
-      .focus-ring {
-        position: absolute;
-        z-index: 4;
-        top: 49%;
-        left: 50%;
-        width: 132px;
-        height: 132px;
-        border: 4px solid rgba(255, 255, 255, 0.92);
-        border-radius: 2px;
-        box-shadow: 14px 14px 0 rgba(228, 0, 43, 0.88);
-        transform: translate(-50%, -50%);
-      }
       .station-star {
         position: absolute;
         z-index: 5;
@@ -365,24 +319,6 @@ function civicMapDocument(logoDataUrl: string, fontDataUrl: string): string {
         font: 400 89px/0.82 Arial, "Noto Sans Symbols 2", sans-serif;
         text-align: center;
         transform: translate(-50%, -50%);
-      }
-      .focus-ring::before,
-      .focus-ring::after {
-        position: absolute;
-        background: #51c2f0;
-        content: "";
-      }
-      .focus-ring::before {
-        top: 50%;
-        right: -34px;
-        left: -34px;
-        height: 2px;
-      }
-      .focus-ring::after {
-        top: -34px;
-        bottom: -34px;
-        left: 50%;
-        width: 2px;
       }
       .brand {
         position: absolute;
@@ -496,7 +432,6 @@ function civicMapDocument(logoDataUrl: string, fontDataUrl: string): string {
     <div class="civic-stars" aria-hidden="true">
       <span>✶</span><span>✶</span><span>✶</span><span>✶</span>
     </div>
-    <div class="focus-ring" aria-hidden="true"></div>
     <div class="station-star" aria-hidden="true">✶</div>
     <div class="brand" aria-label="Divvy">
       <img src="${logoDataUrl}" alt="Divvy">
@@ -551,31 +486,6 @@ function nightlineMapDocument(
           linear-gradient(180deg, rgba(1, 2, 5, 0.1) 0%, transparent 48%),
           linear-gradient(180deg, transparent 46%, rgba(1, 2, 5, 0.08) 56%, rgba(1, 2, 5, 0.86) 73%, #010205 88%);
         pointer-events: none;
-      }
-      .signal-line {
-        position: absolute;
-        z-index: 4;
-        top: 50%;
-        right: 0;
-        left: 0;
-        height: 2px;
-        background: linear-gradient(90deg, transparent 0 11%, rgba(81, 194, 240, 0.28) 31%, #51c2f0 50%, rgba(81, 194, 240, 0.28) 69%, transparent 89%);
-        box-shadow: 0 0 18px rgba(81, 194, 240, 0.48);
-      }
-      .focus-ring {
-        position: absolute;
-        z-index: 4;
-        top: 50%;
-        left: 50%;
-        width: 154px;
-        height: 154px;
-        border: 3px solid rgba(255, 255, 255, 0.92);
-        border-radius: 50%;
-        box-shadow:
-          0 0 0 13px rgba(1, 2, 5, 0.22),
-          0 0 0 17px #51c2f0,
-          0 0 62px rgba(81, 194, 240, 0.7);
-        transform: translate(-50%, -50%);
       }
       .station-star {
         position: absolute;
@@ -694,8 +604,6 @@ function nightlineMapDocument(
   <body>
     <div id="map"></div>
     <div class="map-vignette"></div>
-    <div class="signal-line" aria-hidden="true"></div>
-    <div class="focus-ring" aria-hidden="true"></div>
     <div class="station-star" aria-hidden="true">✶</div>
     <div class="brand" aria-label="Divvy">
       <img src="${logoDataUrl}" alt="Divvy">
