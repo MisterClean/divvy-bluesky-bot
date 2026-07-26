@@ -52,6 +52,12 @@ The nightline card uses a centered, poster-like treatment and the status
 `CHARGED` for electrification announcements (`DEPLOYED` for new stations).
 The visual style does not change the accompanying Bluesky text.
 
+### Announcement card examples
+
+| Civic | Nightline |
+| :---: | :---: |
+| ![Civic announcement card showing a bright downtown map, CTA transit routes, points of interest, and a new Divvy station marker](assets/announcement-card-civic.jpg) | ![Nightline announcement card showing a bright downtown map, CTA transit routes, points of interest, and a new Divvy station marker](assets/announcement-card-nightline.jpg) |
+
 ## Architecture
 
 ```mermaid
