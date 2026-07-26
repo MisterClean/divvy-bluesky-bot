@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   createStationApiUrl,
   createStationImageAlt,
+  encodeJpegAtHighestQuality,
+  MAX_IMAGE_BYTES,
 } from "../src/media/image.js";
 import { station } from "./fixtures.js";
 
@@ -41,5 +43,20 @@ describe("station image accessibility metadata", () => {
     );
     expect(url).toContain("upper(%60id%60)");
     expect(url).toContain("%271859717767703464460%27");
+  });
+});
+
+describe("encodeJpegAtHighestQuality", () => {
+  it("selects the highest integer JPEG quality within the Bluesky limit", async () => {
+    const attemptedQualities: number[] = [];
+    const bytes = await encodeJpegAtHighestQuality(async (quality) => {
+      attemptedQualities.push(quality);
+      return Buffer.alloc(quality * 30_000);
+    });
+
+    expect(MAX_IMAGE_BYTES).toBe(2_000_000);
+    expect(bytes.length).toBe(1_980_000);
+    expect(attemptedQualities).toContain(66);
+    expect(attemptedQualities).toContain(67);
   });
 });

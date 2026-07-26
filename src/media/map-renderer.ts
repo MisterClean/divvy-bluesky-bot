@@ -14,7 +14,7 @@ import type {
 import {
   assertImageSize,
   createStationImageAlt,
-  MAX_IMAGE_BYTES,
+  encodeJpegAtHighestQuality,
   type PostImage,
 } from "./image.js";
 
@@ -307,17 +307,12 @@ export function redactBrowserSecrets(value: string): string {
 }
 
 async function compressMap(png: Buffer): Promise<Buffer> {
-  for (const quality of [88, 82, 76, 70]) {
-    const jpeg = await sharp(png)
+  return encodeJpegAtHighestQuality((quality) =>
+    sharp(png)
       .flatten({ background: "#f8fafc" })
       .jpeg({ quality, mozjpeg: true })
-      .toBuffer();
-    if (jpeg.length <= MAX_IMAGE_BYTES) {
-      return jpeg;
-    }
-  }
-
-  throw new Error("Could not compress map below the Bluesky image limit");
+      .toBuffer(),
+  );
 }
 
 interface MapDocumentPayload {
@@ -368,12 +363,14 @@ function mapBootstrapScript(payload: MapDocumentPayload): string {
         const electricDetails = document.querySelector("[data-electric]");
         const eyebrowElement = document.querySelector("[data-eyebrow]");
         const statusElement = document.querySelector("[data-status]");
+        const attributionElement = document.querySelector("[data-attribution]");
         if (
           !title ||
           !details ||
           !electricDetails ||
           !eyebrowElement ||
-          !statusElement
+          !statusElement ||
+          !attributionElement
         ) {
           throw new Error("Map card elements are missing");
         }
@@ -398,6 +395,238 @@ function mapBootstrapScript(payload: MapDocumentPayload): string {
         } else if (stationNameLength > 24) {
           title.classList.add("long");
         }
+
+        const setPaint = (map, layerId, property, value) => {
+          if (map.getLayer(layerId)) {
+            map.setPaintProperty(layerId, property, value);
+          }
+        };
+        const setLayout = (map, layerId, property, value) => {
+          if (map.getLayer(layerId)) {
+            map.setLayoutProperty(layerId, property, value);
+          }
+        };
+        const emphasizeStreetGrid = (map) => {
+          const casing = "#aebbc8";
+          const minorRoad = "#fbfcfd";
+          const majorRoad = "#f5fbff";
+          const label = "#29445f";
+          const minorWidth = [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            15,
+            2.5,
+            18,
+            7
+          ];
+          const serviceWidth = [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            15,
+            2,
+            18,
+            5.5
+          ];
+          const majorWidth = [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            15,
+            4,
+            18,
+            11
+          ];
+
+          for (const id of [
+            "roads_minor_service_casing",
+            "roads_minor_casing",
+            "roads_link_casing",
+            "roads_major_casing_late",
+            "roads_highway_casing_late",
+            "roads_major_casing_early",
+            "roads_highway_casing_early",
+            "roads_bridges_other_casing",
+            "roads_bridges_link_casing",
+            "roads_bridges_minor_casing",
+            "roads_bridges_major_casing",
+            "roads_bridges_highway_casing"
+          ]) {
+            setPaint(map, id, "line-color", casing);
+          }
+          for (const id of [
+            "roads_minor_service",
+            "roads_other",
+            "roads_bridges_other"
+          ]) {
+            setPaint(map, id, "line-color", minorRoad);
+            setPaint(map, id, "line-width", serviceWidth);
+          }
+          for (const id of ["roads_minor", "roads_bridges_minor"]) {
+            setPaint(map, id, "line-color", minorRoad);
+            setPaint(map, id, "line-width", minorWidth);
+          }
+          for (const id of [
+            "roads_link",
+            "roads_major",
+            "roads_highway",
+            "roads_bridges_link",
+            "roads_bridges_major",
+            "roads_bridges_highway"
+          ]) {
+            setPaint(map, id, "line-color", majorRoad);
+            setPaint(map, id, "line-width", majorWidth);
+          }
+          for (const id of [
+            "roads_minor_casing",
+            "roads_bridges_minor_casing"
+          ]) {
+            setPaint(map, id, "line-gap-width", minorWidth);
+            setPaint(map, id, "line-width", 1.25);
+          }
+          for (const id of [
+            "roads_minor_service_casing",
+            "roads_bridges_other_casing"
+          ]) {
+            setPaint(map, id, "line-gap-width", serviceWidth);
+            setPaint(map, id, "line-width", 1);
+          }
+          for (const id of [
+            "roads_link_casing",
+            "roads_major_casing_late",
+            "roads_highway_casing_late",
+            "roads_major_casing_early",
+            "roads_highway_casing_early",
+            "roads_bridges_link_casing",
+            "roads_bridges_major_casing",
+            "roads_bridges_highway_casing"
+          ]) {
+            setPaint(map, id, "line-gap-width", majorWidth);
+            setPaint(map, id, "line-width", 1.35);
+          }
+          for (const id of ["roads_labels_minor", "roads_labels_major"]) {
+            setPaint(map, id, "text-color", label);
+            setPaint(map, id, "text-halo-color", "#ffffff");
+            setPaint(map, id, "text-halo-width", 1.5);
+          }
+          setLayout(map, "roads_labels_minor", "text-size", 13);
+          setLayout(map, "roads_labels_major", "text-size", 14);
+          setPaint(map, "roads_rail", "line-color", "#657382");
+          setPaint(map, "roads_rail", "line-opacity", 0.72);
+        };
+        const ctaRailColor = [
+          "case",
+          ["!=", ["index-of", "Red", ["get", "lines"]], -1],
+          "#c60c30",
+          ["!=", ["index-of", "Blue", ["get", "lines"]], -1],
+          "#00a1de",
+          ["!=", ["index-of", "Brown", ["get", "lines"]], -1],
+          "#62361b",
+          ["!=", ["index-of", "Green", ["get", "lines"]], -1],
+          "#009b3a",
+          ["!=", ["index-of", "Orange", ["get", "lines"]], -1],
+          "#f9461c",
+          ["!=", ["index-of", "Pink", ["get", "lines"]], -1],
+          "#e27ea6",
+          ["!=", ["index-of", "Purple", ["get", "lines"]], -1],
+          "#522398",
+          ["!=", ["index-of", "Yellow", ["get", "lines"]], -1],
+          "#f9e300",
+          "#59636f"
+        ];
+        const addCtaTransit = (map) => {
+          const beforeLabels = map.getLayer("roads_labels_minor")
+            ? "roads_labels_minor"
+            : undefined;
+          const railWidth = 5;
+
+          map.addSource("cta-bus-routes", {
+            type: "geojson",
+            data:
+              "https://data.cityofchicago.org/resource/6uva-a5ei.geojson?$limit=5000"
+          });
+          map.addLayer(
+            {
+              id: "cta-bus-routes",
+              type: "line",
+              source: "cta-bus-routes",
+              paint: {
+                "line-color": "#0077a8",
+                "line-width": 2.7,
+                "line-opacity": 0.46
+              }
+            },
+            beforeLabels
+          );
+
+          map.addSource("cta-rail-lines", {
+            type: "geojson",
+            data:
+              "https://data.cityofchicago.org/resource/xbyr-jnvx.geojson?$limit=5000"
+          });
+          map.addLayer(
+            {
+              id: "cta-rail-casing",
+              type: "line",
+              source: "cta-rail-lines",
+              paint: {
+                "line-color": "#ffffff",
+                "line-width": railWidth + 3,
+                "line-opacity": 0.86
+              }
+            },
+            beforeLabels
+          );
+          map.addLayer(
+            {
+              id: "cta-rail-lines",
+              type: "line",
+              source: "cta-rail-lines",
+              paint: {
+                "line-color": ctaRailColor,
+                "line-width": railWidth,
+                "line-opacity": 0.94
+              }
+            },
+            beforeLabels
+          );
+
+          map.addSource("cta-rail-stations", {
+            type: "geojson",
+            data:
+              "https://data.cityofchicago.org/resource/3tzw-cg4m.geojson?$limit=5000"
+          });
+          map.addLayer({
+            id: "cta-rail-stations",
+            type: "circle",
+            source: "cta-rail-stations",
+            paint: {
+              "circle-radius": 6,
+              "circle-color": "#ffffff",
+              "circle-stroke-color": "#17202a",
+              "circle-stroke-width": 2
+            }
+          });
+          map.addLayer({
+            id: "cta-rail-station-labels",
+            type: "symbol",
+            source: "cta-rail-stations",
+            layout: {
+              "text-field": ["get", "longname"],
+              "text-font": ["Noto Sans Medium"],
+              "text-size": 12,
+              "text-offset": [0, 1.25],
+              "text-anchor": "top",
+              "text-max-width": 9
+            },
+            paint: {
+              "text-color": "#17202a",
+              "text-halo-color": "#ffffff",
+              "text-halo-width": 2
+            }
+          });
+        };
 
         await new Promise((resolvePromise, rejectPromise) => {
           const map = new maplibregl.Map({
@@ -424,6 +653,9 @@ function mapBootstrapScript(payload: MapDocumentPayload): string {
             }
           });
           map.on("load", () => {
+            emphasizeStreetGrid(map);
+            addCtaTransit(map);
+            attributionElement.textContent += " · CTA data";
             loaded = true;
           });
           map.on("idle", () => {
@@ -480,7 +712,7 @@ function civicMapDocument(logoDataUrl: string, fontDataUrl: string): string {
         font-family: "Big Shoulders Text", "Arial Narrow", sans-serif;
       }
       #map {
-        filter: saturate(0.96) contrast(1.04) brightness(0.98);
+        filter: saturate(1) contrast(1.03) brightness(1.08);
       }
       .map-vignette {
         position: absolute;
@@ -662,7 +894,7 @@ function civicMapDocument(logoDataUrl: string, fontDataUrl: string): string {
       </div>
     </section>
     <div class="civic-stripes" aria-hidden="true"></div>
-    <div class="attribution">© Protomaps · © OpenStreetMap contributors</div>
+    <div class="attribution" data-attribution>© Protomaps · © OpenStreetMap contributors</div>
   </body>
 </html>`;
 }
@@ -691,16 +923,16 @@ function nightlineMapDocument(
         font-family: "Big Shoulders Text", "Arial Narrow", sans-serif;
       }
       #map {
-        filter: saturate(0.9) contrast(1.08) brightness(0.9);
+        filter: saturate(0.98) contrast(1.05) brightness(1.12);
       }
       .map-vignette {
         position: absolute;
         z-index: 3;
         inset: 0;
         background:
-          radial-gradient(circle at 50% 48%, rgba(81, 194, 240, 0.05), transparent 24%, rgba(1, 2, 5, 0.12) 72%),
-          linear-gradient(180deg, rgba(1, 2, 5, 0.1) 0%, transparent 48%),
-          linear-gradient(180deg, transparent 46%, rgba(1, 2, 5, 0.08) 56%, rgba(1, 2, 5, 0.86) 73%, #010205 88%);
+          radial-gradient(circle at 50% 48%, rgba(81, 194, 240, 0.05), transparent 24%, rgba(1, 2, 5, 0.08) 72%),
+          linear-gradient(180deg, rgba(1, 2, 5, 0.04) 0%, transparent 48%),
+          linear-gradient(180deg, transparent 48%, rgba(1, 2, 5, 0.04) 58%, rgba(1, 2, 5, 0.72) 76%, #010205 90%);
         pointer-events: none;
       }
       .station-star {
@@ -843,7 +1075,7 @@ function nightlineMapDocument(
         <div class="details electric" data-electric>⚡️ Electrified</div>
       </div>
     </section>
-    <div class="attribution">© Protomaps · © OpenStreetMap contributors</div>
+    <div class="attribution" data-attribution>© Protomaps · © OpenStreetMap contributors</div>
   </body>
 </html>`;
 }
