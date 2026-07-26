@@ -11,6 +11,7 @@ import { station } from "./fixtures.js";
 
 class FakeAgentBrowserRunner implements AgentBrowserCommandRunner {
   readonly commands: string[][] = [];
+  readonly renderedDocuments: string[] = [];
   renderedDocument = "";
 
   async run(arguments_: string[]): Promise<string> {
@@ -23,6 +24,7 @@ class FakeAgentBrowserRunner implements AgentBrowserCommandRunner {
         fileURLToPath(openTarget),
         "utf8",
       );
+      this.renderedDocuments.push(this.renderedDocument);
     }
 
     const screenshotIndex = arguments_.indexOf("screenshot");
@@ -96,6 +98,30 @@ describe("ProtomapsRenderer agent-browser orchestration", () => {
       expect(runner.renderedDocument).toContain("maplibregl.Map");
       expect(runner.renderedDocument).toContain("nightline");
       expect(runner.renderedDocument).toContain('"zoom":17.5');
+      expect(runner.renderedDocuments[0]).toContain(
+        "filter: saturate(1) contrast(1.03) brightness(1.08)",
+      );
+      expect(runner.renderedDocuments[0]).toContain(
+        "background: rgba(255, 255, 255, 0.97)",
+      );
+      expect(runner.renderedDocuments[0]).toContain(
+        "0 8px 18px rgba(7, 29, 58, 0.22)",
+      );
+      expect(runner.renderedDocuments[0]).toContain(
+        'id: "cta-bus-routes"',
+      );
+      expect(runner.renderedDocuments[0]).toContain(
+        'id: "cta-rail-stations"',
+      );
+      expect(runner.renderedDocuments[1]).toContain(
+        "filter: saturate(0.98) contrast(1.05) brightness(1.12)",
+      );
+      expect(runner.renderedDocuments[1]).toContain(
+        "0 8px 18px rgba(1, 2, 5, 0.32)",
+      );
+      expect(runner.renderedDocument).not.toContain(
+        "filter: brightness(0) invert(1)",
+      );
 
       const launchCommands = runner.commands.filter((command) =>
         command.includes("--allow-file-access"),

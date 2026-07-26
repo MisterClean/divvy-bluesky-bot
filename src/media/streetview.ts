@@ -4,7 +4,7 @@ import type { StationSnapshot } from "../domain/station.js";
 import {
   assertImageSize,
   createStationImageAlt,
-  MAX_IMAGE_BYTES,
+  encodeJpegAtHighestQuality,
   type PostImage,
 } from "./image.js";
 
@@ -71,17 +71,10 @@ export class GoogleStreetViewProvider implements StreetViewProvider {
 }
 
 async function compressStreetView(source: Buffer): Promise<Buffer> {
-  for (const quality of [88, 82, 76, 70]) {
-    const jpeg = await sharp(source)
+  return encodeJpegAtHighestQuality((quality) =>
+    sharp(source)
       .rotate()
       .jpeg({ quality, mozjpeg: true })
-      .toBuffer();
-    if (jpeg.length <= MAX_IMAGE_BYTES) {
-      return jpeg;
-    }
-  }
-
-  throw new Error(
-    "Could not compress Street View image below the Bluesky image limit",
+      .toBuffer(),
   );
 }

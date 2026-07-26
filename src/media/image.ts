@@ -8,7 +8,35 @@ export interface PostImage {
   height: number;
 }
 
-export const MAX_IMAGE_BYTES = 1_000_000;
+export const MAX_IMAGE_BYTES = 2_000_000;
+
+export async function encodeJpegAtHighestQuality(
+  encode: (quality: number) => Promise<Buffer>,
+): Promise<Buffer> {
+  let lowestQuality = 1;
+  let highestQuality = 100;
+  let best: Buffer | undefined;
+
+  while (lowestQuality <= highestQuality) {
+    const quality = Math.floor((lowestQuality + highestQuality) / 2);
+    const candidate = await encode(quality);
+
+    if (candidate.length <= MAX_IMAGE_BYTES) {
+      best = candidate;
+      lowestQuality = quality + 1;
+    } else {
+      highestQuality = quality - 1;
+    }
+  }
+
+  if (!best) {
+    throw new Error(
+      `Could not compress JPEG below ${MAX_IMAGE_BYTES} bytes`,
+    );
+  }
+
+  return best;
+}
 
 const DIVVY_DATASET_ID = "bbyy-e7gq";
 const DIVVY_API_FIELDS = [
