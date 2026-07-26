@@ -1,4 +1,5 @@
 import { AtpAgent } from "@atproto/api";
+import { TID } from "@atproto/common-web";
 import type { BlobRef } from "@atproto/lexicon";
 import type { AppConfig } from "../config.js";
 import type { PendingDelivery } from "../db/database.js";
@@ -206,5 +207,7 @@ export class BlueskyPublisher implements DeliveryPublisher {
 }
 
 export function streetViewRecordKey(rootRecordKey: string): string {
-  return `${rootRecordKey}-streetview`;
+  const root = TID.fromStr(rootRecordKey);
+  const replyClockId = (root.clockid() + 1) % 32;
+  return TID.fromTime(root.timestamp(), replyClockId).toString();
 }

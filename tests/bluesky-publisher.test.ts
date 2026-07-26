@@ -89,7 +89,7 @@ describe("BlueskyPublisher", () => {
     const delivery: PendingDelivery = {
       id: "delivery-1",
       eventId: "event-1",
-      recordKey: "3mabc123",
+      recordKey: "3mrizr4hmf22p",
       announcementStyle: "civic",
       status: "pending",
       attempts: 0,
@@ -103,8 +103,8 @@ describe("BlueskyPublisher", () => {
     const result = await publisher.publish(delivery);
 
     expect(result).toEqual({
-      uri: "at://did:plc:example/app.bsky.feed.post/3mabc123",
-      cid: "cid-3mabc123",
+      uri: "at://did:plc:example/app.bsky.feed.post/3mrizr4hmf22p",
+      cid: "cid-3mrizr4hmf22p",
     });
     expect(created).toHaveLength(2);
     expect(created[0]?.rkey).toBe(delivery.recordKey);
@@ -121,6 +121,9 @@ describe("BlueskyPublisher", () => {
     expect(created[0]?.record.reply).toBeUndefined();
 
     const replyRecordKey = streetViewRecordKey(delivery.recordKey);
+    expect(replyRecordKey).toBe("3mrizr4hmf22q");
+    expect(replyRecordKey).toHaveLength(13);
+    expect(replyRecordKey).not.toBe(delivery.recordKey);
     expect(created[1]?.rkey).toBe(replyRecordKey);
     expect(created[1]?.record.text).toBe(
       "📸 Street view of State St & Lake St",
