@@ -31,6 +31,12 @@ sudo install -o root -g root -m 0644 \
   deploy/divvy-bot-deploy.service /etc/systemd/system/divvy-bot-deploy.service
 sudo install -o root -g root -m 0644 \
   deploy/divvy-bot-deploy.timer /etc/systemd/system/divvy-bot-deploy.timer
+sudo install -o root -g root -m 0755 \
+  deploy/check-divvy-bot-health /usr/local/sbin/check-divvy-bot-health
+sudo install -o root -g root -m 0644 \
+  deploy/divvy-bot-health.service /etc/systemd/system/divvy-bot-health.service
+sudo install -o root -g root -m 0644 \
+  deploy/divvy-bot-health.timer /etc/systemd/system/divvy-bot-health.timer
 sudo systemctl daemon-reload
 ```
 
@@ -44,6 +50,7 @@ After the first deploy and rollback have both been verified:
 
 ```bash
 sudo systemctl enable --now divvy-bot-deploy.timer
+sudo systemctl enable --now divvy-bot-health.timer
 ```
 
 The deployer:
@@ -62,7 +69,14 @@ Logs are available with:
 ```bash
 journalctl -u divvy-bot-deploy.service
 journalctl -u divvy-bot.service
+journalctl -u divvy-bot-health.service
 ```
+
+The health timer checks every 30 minutes and fails visibly when SQLite is not
+healthy, a delivery is not complete, the last successful run is more than eight
+hours old, the regular bot timer is inactive, or less than 3 GiB is free beneath
+the database. It deliberately does not restart Docker because this host may run
+other workloads.
 
 ## Rollback
 
