@@ -14,6 +14,8 @@ class FakeAgentBrowserRunner implements AgentBrowserCommandRunner {
   readonly renderedDocuments: string[] = [];
   renderedDocument = "";
 
+  constructor(private renderErrorsRemaining = 0) {}
+
   async run(arguments_: string[]): Promise<string> {
     this.commands.push(arguments_);
 
@@ -47,6 +49,19 @@ class FakeAgentBrowserRunner implements AgentBrowserCommandRunner {
     }
 
     if (arguments_.includes("eval")) {
+      if (this.renderErrorsRemaining > 0) {
+        this.renderErrorsRemaining -= 1;
+        return JSON.stringify({
+          success: true,
+          data: {
+            result: {
+              status: "error",
+              error: "Timed out waiting for Protomaps to render",
+            },
+          },
+          error: null,
+        });
+      }
       return JSON.stringify({
         success: true,
         data: { result: { status: "done" } },
@@ -70,6 +85,9 @@ describe("ProtomapsRenderer agent-browser orchestration", () => {
         pixelRatio: 1.5,
         zoom: 17,
         nightlineZoom: 17.5,
+        renderTimeoutMs: 75_000,
+        maxAttempts: 2,
+        retryDelayMs: 0,
       },
       runner,
     );
@@ -111,6 +129,9 @@ describe("ProtomapsRenderer agent-browser orchestration", () => {
         'id: "cta-bus-routes"',
       );
       expect(runner.renderedDocuments[0]).toContain(
+        '"renderTimeoutMs":75000',
+      );
+      expect(runner.renderedDocuments[0]).toContain(
         'id: "cta-rail-stations"',
       );
       expect(runner.renderedDocuments[1]).toContain(
@@ -144,6 +165,38 @@ describe("ProtomapsRenderer agent-browser orchestration", () => {
     }
 
     expect(runner.commands.at(-1)).toContain("close");
+  });
+
+  it("retries a failed render with a fresh browser session", async () => {
+    const runner = new FakeAgentBrowserRunner(1);
+    const renderer = new ProtomapsRenderer(
+      {
+        styleUrl:
+          "https://api.protomaps.com/styles/v5/light/en.json?key=test-key",
+        width: 600,
+        height: 600,
+        pixelRatio: 1,
+        zoom: 17,
+        nightlineZoom: 17.5,
+        renderTimeoutMs: 75_000,
+        maxAttempts: 2,
+        retryDelayMs: 0,
+      },
+      runner,
+    );
+
+    try {
+      const image = await renderer.render(station());
+      expect(image.mimeType).toBe("image/jpeg");
+      expect(runner.renderedDocuments).toHaveLength(2);
+      expect(
+        runner.commands.filter((command) =>
+          command.includes("--allow-file-access"),
+        ),
+      ).toHaveLength(2);
+    } finally {
+      await renderer.close();
+    }
   });
 
   it("redacts Protomaps query keys from browser errors", async () => {

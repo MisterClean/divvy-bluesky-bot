@@ -27,6 +27,24 @@ const environmentSchema = z
     MAP_PIXEL_RATIO: z.coerce.number().min(1).max(3).default(1),
     MAP_ZOOM: z.coerce.number().min(12).max(19).default(17),
     MAP_NIGHTLINE_ZOOM: z.coerce.number().min(12).max(19).default(17.5),
+    MAP_RENDER_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(10_000)
+      .max(180_000)
+      .default(75_000),
+    MAP_RENDER_MAX_ATTEMPTS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(5)
+      .default(2),
+    MAP_RENDER_RETRY_DELAY_MS: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(30_000)
+      .default(2_000),
     AGENT_BROWSER_EXECUTABLE_PATH: z.string().min(1).optional(),
     STREETVIEW_ENABLED: booleanFromEnv.default(false),
     GOOGLE_MAPS_API_KEY: z.string().min(1).optional(),
@@ -86,6 +104,9 @@ export interface AppConfig {
   mapPixelRatio: number;
   mapZoom: number;
   mapNightlineZoom: number;
+  mapRenderTimeoutMs: number;
+  mapRenderMaxAttempts: number;
+  mapRenderRetryDelayMs: number;
   agentBrowserExecutablePath?: string;
   streetViewEnabled: boolean;
   googleMapsApiKey?: string;
@@ -129,6 +150,9 @@ export function loadConfig(
     mapPixelRatio: environment.MAP_PIXEL_RATIO,
     mapZoom: environment.MAP_ZOOM,
     mapNightlineZoom: environment.MAP_NIGHTLINE_ZOOM,
+    mapRenderTimeoutMs: environment.MAP_RENDER_TIMEOUT_MS,
+    mapRenderMaxAttempts: environment.MAP_RENDER_MAX_ATTEMPTS,
+    mapRenderRetryDelayMs: environment.MAP_RENDER_RETRY_DELAY_MS,
     ...(environment.AGENT_BROWSER_EXECUTABLE_PATH
       ? {
           agentBrowserExecutablePath:

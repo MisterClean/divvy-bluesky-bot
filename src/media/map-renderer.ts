@@ -11,6 +11,7 @@ import type {
   AnnouncementStyle,
   StationSnapshot,
 } from "../domain/station.js";
+import { logger } from "../logging.js";
 import {
   assertImageSize,
   createStationImageAlt,
@@ -48,6 +49,9 @@ export interface MapRendererOptions {
   pixelRatio: number;
   zoom: number;
   nightlineZoom: number;
+  renderTimeoutMs: number;
+  maxAttempts: number;
+  retryDelayMs: number;
   agentBrowserBinary?: string;
   browserExecutablePath?: string;
 }
@@ -70,6 +74,7 @@ export class ProtomapsRenderer implements StationMapRenderer {
       new ProcessAgentBrowserCommandRunner(
         options.agentBrowserBinary ??
           resolve(process.cwd(), "node_modules/.bin/agent-browser"),
+        options.renderTimeoutMs + 30_000,
       );
   }
 
@@ -87,6 +92,9 @@ export class ProtomapsRenderer implements StationMapRenderer {
       pixelRatio: config.mapPixelRatio,
       zoom: config.mapZoom,
       nightlineZoom: config.mapNightlineZoom,
+      renderTimeoutMs: config.mapRenderTimeoutMs,
+      maxAttempts: config.mapRenderMaxAttempts,
+      retryDelayMs: config.mapRenderRetryDelayMs,
       ...(config.agentBrowserExecutablePath
         ? { browserExecutablePath: config.agentBrowserExecutablePath }
         : {}),
@@ -99,6 +107,38 @@ export class ProtomapsRenderer implements StationMapRenderer {
       eyebrow: string;
       style?: AnnouncementStyle;
     } = { eyebrow: "New Divvy Station" },
+  ): Promise<PostImage> {
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= this.options.maxAttempts; attempt += 1) {
+      try {
+        return await this.renderOnce(station, renderOptions);
+      } catch (error) {
+        lastError = error;
+        await this.close().catch(() => undefined);
+        if (attempt >= this.options.maxAttempts) {
+          break;
+        }
+        logger.warn("Map rendering attempt failed; retrying with a fresh browser", {
+          stationId: station.id,
+          attempt,
+          maxAttempts: this.options.maxAttempts,
+          retryDelayMs: this.options.retryDelayMs,
+          errorMessage: redactBrowserSecrets(errorMessage(error)),
+        });
+        await delay(this.options.retryDelayMs);
+      }
+    }
+
+    throw new Error(redactBrowserSecrets(errorMessage(lastError)));
+  }
+
+  private async renderOnce(
+    station: StationSnapshot,
+    renderOptions: {
+      eyebrow: string;
+      style?: AnnouncementStyle;
+    },
   ): Promise<PostImage> {
     const announcementStyle = renderOptions.style ?? "civic";
     const temporaryDirectory = await fs.mkdtemp(
@@ -124,6 +164,7 @@ export class ProtomapsRenderer implements StationMapRenderer {
                 : this.options.zoom,
             eyebrow: renderOptions.eyebrow,
             announcementStyle,
+            renderTimeoutMs: this.options.renderTimeoutMs,
           },
         ),
         { mode: 0o600 },
@@ -159,9 +200,6 @@ export class ProtomapsRenderer implements StationMapRenderer {
       };
       assertImageSize(image);
       return image;
-    } catch (error) {
-      await this.close().catch(() => undefined);
-      throw new Error(redactBrowserSecrets(errorMessage(error)));
     } finally {
       await fs.rm(temporaryDirectory, { recursive: true, force: true });
     }
@@ -228,7 +266,10 @@ export class ProtomapsRenderer implements StationMapRenderer {
 class ProcessAgentBrowserCommandRunner
   implements AgentBrowserCommandRunner
 {
-  constructor(private readonly binaryPath: string) {}
+  constructor(
+    private readonly binaryPath: string,
+    private readonly commandTimeoutMs: number,
+  ) {}
 
   run(arguments_: string[]): Promise<string> {
     return new Promise((resolvePromise, rejectPromise) => {
@@ -239,11 +280,11 @@ class ProcessAgentBrowserCommandRunner
           encoding: "utf8",
           env: {
             ...process.env,
-            AGENT_BROWSER_DEFAULT_TIMEOUT: "45000",
-            AGENT_BROWSER_IDLE_TIMEOUT_MS: "60000",
+            AGENT_BROWSER_DEFAULT_TIMEOUT: String(this.commandTimeoutMs),
+            AGENT_BROWSER_IDLE_TIMEOUT_MS: String(this.commandTimeoutMs),
           },
           maxBuffer: 2 * 1024 * 1024,
-          timeout: 60_000,
+          timeout: this.commandTimeoutMs,
         },
         (error, stdout, stderr) => {
           if (error) {
@@ -299,6 +340,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, milliseconds);
+  });
+}
+
 export function redactBrowserSecrets(value: string): string {
   return value.replace(
     /([?&]key=)[^&\s"'<>\\]+/giu,
@@ -321,6 +368,7 @@ interface MapDocumentPayload {
   zoom: number;
   eyebrow: string;
   announcementStyle: AnnouncementStyle;
+  renderTimeoutMs: number;
 }
 
 function completeMapDocument(
@@ -356,7 +404,8 @@ function mapBootstrapScript(payload: MapDocumentPayload): string {
           styleUrl,
           zoom,
           eyebrow,
-          announcementStyle
+          announcementStyle,
+          renderTimeoutMs
         } = ${serializedPayload};
         const title = document.querySelector("[data-title]");
         const details = document.querySelector("[data-docks]");
@@ -644,7 +693,7 @@ function mapBootstrapScript(payload: MapDocumentPayload): string {
             rejectPromise(
               new Error("Timed out waiting for Protomaps to render")
             );
-          }, 30000);
+          }, renderTimeoutMs);
 
           map.on("error", (event) => {
             if (event && event.error) {
