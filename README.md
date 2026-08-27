@@ -194,6 +194,9 @@ The complete copyable template is in [`.env.example`](.env.example).
 | `MAP_PIXEL_RATIO` | `1` | Browser device scale factor. Keep `1` for a 1080 × 1350 result. |
 | `MAP_ZOOM` | `17` | Civic card zoom. |
 | `MAP_NIGHTLINE_ZOOM` | `17.5` | Nightline card zoom. |
+| `MAP_RENDER_TIMEOUT_MS` | `75000` | Maximum wait for each Protomaps render attempt. |
+| `MAP_RENDER_MAX_ATTEMPTS` | `2` | Fresh-browser attempts before requeueing a delivery. |
+| `MAP_RENDER_RETRY_DELAY_MS` | `2000` | Delay between fresh-browser render attempts. |
 | `AGENT_BROWSER_EXECUTABLE_PATH` | auto-detected | Explicit Chrome or Chromium executable. |
 | `OUTPUT_DIR` | `output` | Default directory for manual renders. |
 | `STREETVIEW_ENABLED` | `false` | Publishes Street View as the first reply when available. |
